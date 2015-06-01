@@ -90,9 +90,9 @@ class ReadBeamform:
           data : array_like
                np.float32 arr [Re, Im, Re, Im, ...]
           """
-          raw = np.fromstring(raw, dtype=np.int8)
+          raw = np.fromstring(raw, dtype=np.uint8)
 
-          raw_re = ((raw >> 4).astype(np.int8) - 8).astype(np.float32)
+          raw_re = (((raw >> 4) & 0xf).astype(np.int8) - 8).astype(np.float32)
           raw_im = ((raw & 0xf).astype(np.int8) - 8).astype(np.float32)
 
           data = np.zeros([2*len(raw_re)], dtype=np.float32)
@@ -151,11 +151,11 @@ class ReadBeamform:
 
           return header, data
 
-     def get_times(self, header, data_bin):
-          nframes = len(header)
-          t_sec = nframes / 625.0
-
-          return np.linspace(0, t_sec, data_bin.shape[0])
+     def get_times(self, header, data_bin, os=0):
+          nframes = header.shape[0]
+          t_sec = nframes / 625.0 / self.npol / self.nfr
+          
+          return np.linspace(os * t_sec, (os+1) * t_sec, data_bin.shape[0])
 
      def rebin_time(self, arr, trb):
           """ Rebin data array in time
