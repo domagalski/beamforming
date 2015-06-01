@@ -151,11 +151,11 @@ class ReadBeamform:
 
           return header, data
 
-     def get_times(self, header):
+     def get_times(self, header, data_bin):
           nframes = len(header)
           t_sec = nframes / 625.0
 
-          return np.linspace(0, t_sec, nframes)
+          return np.linspace(0, t_sec, data_bin.shape[0])
 
      def rebin_time(self, arr, trb):
           """ Rebin data array in time

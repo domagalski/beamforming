@@ -18,7 +18,7 @@ for ii in range(20):
      RB = rbf.ReadBeamform(pmin=npack*ii, pmax=npack*(ii+1))
      h, d = RB.read_file(fn)
      arr.append(RB.fill_arr(h, d, trb=ntrb))
-     t_tot.append(RB.get_times(h))
+     t_tot.append(RB.get_times(h, arr[0]))
 
 arr = np.concatenate(arr)
 t_tot = np.concatenate(t_tot)
