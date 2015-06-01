@@ -167,7 +167,9 @@ class ReadBeamform:
 
           return arr.mean(1)
 
-     def h_index(self, data_corr, header, trb=1):
+
+     def h_index(self, data, header, trb=1):
+          data_corr = data[:, 0::2]**2 + data[:, 1::2]**2
 
           data_corr = data_corr.reshape(-1, 625, 8).mean(1)
 
