@@ -3,22 +3,27 @@ import h5py
 
 import ReadBeamform as rbf
 
-npack = 5000
-ntrb = 5000
+npack = 100000
+ntrb = 1
 
 fn = 'b0329_3bit_v2.pcap'
-outfile = 'b0329_test_times.hdf5'
+#fn = 'b0329_4bit_v3.pcap'
+outfile = 'b0329_test_times3bit_2.hdf5'
 arr = []
 t_tot = []
 
 print "Frame range:"
 print "------------"
-for ii in range(20):
+
+for ii in range(1):
+
      print "    ", npack*ii, npack*(ii+1)
+
      RB = rbf.ReadBeamform(pmin=npack*ii, pmax=npack*(ii+1))
      h, d = RB.read_file(fn)
-     arr.append(RB.fill_arr(h, d, trb=ntrb))
-     t_tot.append(RB.get_times(h, arr[0]))
+
+     arr.append(RB.h_index(d, h, trb=ntrb))
+     t_tot.append(RB.get_times(h, arr[0], os=ii))
 
 arr = np.concatenate(arr)
 t_tot = np.concatenate(t_tot)

@@ -169,6 +169,24 @@ class ReadBeamform:
 
 
      def h_index(self, data, header, trb=1):
+          """ Take header and data arrays and reorganize
+          to produce the full time, pol, freq array
+
+          Parameters
+          ----------
+          data : array_like
+               (nt, ntfr * 2 * self.nfq) array of nt packets
+          header : array_like
+               (nt, 5) array, see self.parse_header
+          ntimes : np.int
+               Number of packets to use
+
+          Returns 
+          -------
+          arr : array_like (duhh) np.float64
+               (ntimes * ntfr, npol, nfreq) array of autocorrelations
+          """
+
           data_corr = data[:, 0::2]**2 + data[:, 1::2]**2
 
           data_corr = data_corr.reshape(-1, 625, 8).mean(1)
@@ -185,7 +203,7 @@ class ReadBeamform:
 
           del data_corr
 
-          return self.rebin_time(arr, trb) 
+          return arr#self.rebin_time(arr, trb) 
 
 
      def fill_arr(self, header, data, ntimes=None, trb=1):
