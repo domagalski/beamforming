@@ -4,6 +4,13 @@ import datetime
 import misc_data_io as misc
 from ch_util import andata, ephemeris as eph, tools
 
+from mpi4py import MPI
+comm = MPI.COMM_WORLD
+print comm.rank, comm.size
+nnodes = 32
+
+freq = range(1024 / nnodes * comm.rank, 1024 / nnodes * (comm.rank+1))
+
 def solve_gain(data, feeds=None):
     """
     Steps through each time/freq pixel, generates a Hermitian matrix and
@@ -50,6 +57,25 @@ def solve_gain(data, feeds=None):
 
     return dr, gain
 
+def read_data(reader_obj, src, prod_sel, freq_sel=None, del_t=100):
+    R = reader_obj
+
+    # Figure out when calibration source transits
+    src_trans = eph.transit_times(src, R.time[0]) 
+
+    # Select +-100 seconds of transit
+    time_range = np.where((R.time < src_trans + del_t) & (R.time > src_trans - del_t))[0]
+
+    R.time_sel = [time_range[0], time_range[-1]]
+    R.prod_sel = prod_sel
+    R.freq_sel = freq_sel
+
+    and_obj = R.read()
+
+    return and_obj
+
+src = eph.CasA
+
 nfeed = 256
 
 arrx = np.zeros([nfeed / 2, nfeed / 2], np.complex128)
@@ -71,7 +97,6 @@ print "Lengths", len(xcorrs), len(ycorrs)
 corrinputs = tools.get_correlator_inputs(\
                 datetime.datetime(2015, 6, 1, 0, 0, 0), correlator='K7BP16-0004')
 
-
 inpx = []
 inpy = []
 
@@ -80,22 +105,27 @@ for i in range(nfeed / 2):
     inpy.append(corrinputs[yfeeds[i]])
 
 
-R = andata.Reader('/scratch/k/krs/jrs65/chime_archive/20150517T220649Z_pathfinder_corr/00044096_0000.h5')
-R.freq_sel = 304
-R.time_sel = [820, 920]
+fn = '/scratch/k/krs/jrs65/chime_archive/20150517T220649Z_pathfinder_corr/00044096_0000.h5'
 
-X = R.read()
+R = andata.Reader(fn)
 
-data = X.vis[:, :, 50]
+Xx = read_data(R, src, xcorrs)
+Xy = read_data(R, src, ycorrs)
 
 data_fs_x = tools.fringestop_pathfinder(\
-     X.vis[:, xcorrs], eph.transit_RA(X.timestamp), X.freq, inpx, eph.CasA)
+     X.vis[:, xcorrs], eph.transit_RA(X.timestamp), X.freq, inpx, src)
 
 data_fs_y = tools.fringestop_pathfinder(\
-     X.vis[:, ycorrs], eph.transit_RA(X.timestamp), X.freq, inpy, eph.CasA)
+     X.vis[:, ycorrs], eph.transit_RA(X.timestamp), X.freq, inpy, src)
 
 dx, ax = solve_gain(data_fs_x)
 dy, ay = solve_gain(data_fs_y)
+
+
+
+
+
+
 
 
 
