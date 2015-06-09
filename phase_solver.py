@@ -10,6 +10,7 @@ print comm.rank, comm.size
 nnodes = 32
 
 freq = range(1024 / nnodes * comm.rank, 1024 / nnodes * (comm.rank+1))
+print freq
 
 def solve_gain(data, feeds=None):
     """
@@ -109,8 +110,8 @@ fn = '/scratch/k/krs/jrs65/chime_archive/20150517T220649Z_pathfinder_corr/000440
 
 R = andata.Reader(fn)
 
-Xx = read_data(R, src, xcorrs)
-Xy = read_data(R, src, ycorrs)
+Xx = read_data(R, src, xcorrs, freq_sel=freq)
+Xy = read_data(R, src, ycorrs, freq_sel=freq)
 
 data_fs_x = tools.fringestop_pathfinder(\
      X.vis[:, xcorrs], eph.transit_RA(X.timestamp), X.freq, inpx, src)
