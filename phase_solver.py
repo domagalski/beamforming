@@ -76,6 +76,21 @@ def read_data(reader_obj, src, prod_sel, freq_sel=None, del_t=100):
 
     return and_obj
 
+def run_gain_solver(freq_range):
+    Xx = read_data(R, src, xcorrs, freq_sel=freq_range)
+    Xy = read_data(R, src, ycorrs, freq_sel=freq_range)   
+
+    data_fs_x = tools.fringestop_pathfinder(\
+         Xx.vis, eph.transit_RA(Xx.timestamp), Xx.freq, inpx, src)
+
+    data_fs_y = tools.fringestop_pathfinder(\
+         Xy.vis, eph.transit_RA(Xy.timestamp), Xy.freq, inpy, src)
+
+    dx, ax = solve_gain(data_fs_x)
+    dy, ay = solve_gain(data_fs_y)
+
+    return ax, ay
+
 src = eph.CasA
 
 nfeed = 256
@@ -111,20 +126,14 @@ fn = '/scratch/k/krs/jrs65/chime_archive/20150517T220649Z_pathfinder_corr/000440
 
 R = andata.Reader(fn)
 
-Xx = read_data(R, src, xcorrs, freq_sel=freq)
-Xy = read_data(R, src, ycorrs, freq_sel=freq)
-print "1"
-data_fs_x = tools.fringestop_pathfinder(\
-     Xx.vis, eph.transit_RA(Xx.timestamp), Xx.freq, inpx, src)
+fch = 32
 
-data_fs_y = tools.fringestop_pathfinder(\
-     Xy.vis, eph.transit_RA(Xy.timestamp), Xy.freq, inpy, src)
-print "2"
-dx, ax = solve_gain(data_fs_x)
-dy, ay = solve_gain(data_fs_y)
+for nu in range(fch):
+    freq_range = range(nu * fch, (nu+1) * fch)
+    ax, ay = run_gain_solver(freq_range)
 
 
-outfile = '/scratch/k/krs/connor/outgains' + np.str(freq[0]) + '.hdf5'
+#outfile = '/scratch/k/krs/connor/outgains' + np.str(freq[0]) + '.hdf5'
 
 f = h5py.File(outfile, 'w')
 f.create_dataset('ax', data=ax)
