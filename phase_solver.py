@@ -7,6 +7,7 @@ from ch_util import andata, ephemeris as eph, tools
 from mpi4py import MPI
 comm = MPI.COMM_WORLD
 print comm.rank, comm.size
+
 nnodes = 32
 
 freq = range(1024 / nnodes * comm.rank, 1024 / nnodes * (comm.rank+1))
@@ -95,6 +96,8 @@ print "Lengths", len(xcorrs), len(ycorrs)
 corrinputs = tools.get_correlator_inputs(\
                 datetime.datetime(2015, 6, 1, 0, 0, 0), correlator='K7BP16-0004')
 
+print "cor", corrinputs
+
 inpx = []
 inpy = []
 
@@ -121,8 +124,12 @@ dx, ax = solve_gain(data_fs_x)
 dy, ay = solve_gain(data_fs_y)
 
 
+outfile = '/scratch/k/krs/connor/outgains' + np.str(freq[0]) + '.hdf5'
 
-
+f = h5py.File(outfile, 'w')
+f.create_dataset('ax', data=ax)
+f.create_dataset('ay', data=ay)
+f.close()
 
 
 
