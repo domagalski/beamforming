@@ -94,8 +94,8 @@ data_fs_x = tools.fringestop_pathfinder(\
 data_fs_y = tools.fringestop_pathfinder(\
      X.vis[:, ycorrs], eph.transit_RA(X.timestamp), X.freq, inpy, eph.CasA)
 
-dx, ax = solve_gain(data_fs_x, feeds=xfeeds)
-dy, ay = solve_gain(data_fs_y, feeds=yfeeds)
+dx, ax = solve_gain(data_fs_x)
+dy, ay = solve_gain(data_fs_y)
 
 
 
