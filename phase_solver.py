@@ -79,9 +79,6 @@ src = eph.CasA
 
 nfeed = 256
 
-arrx = np.zeros([nfeed / 2, nfeed / 2], np.complex128)
-arry = arrx.copy()
-
 xfeeds = range(nfeed / 4) + range(2 * nfeed / 4, 3 * nfeed / 4)
 yfeeds = range(nfeed / 4, 2 * nfeed / 4) + range(3 * nfeed / 4, 4 * nfeed / 4)
 
@@ -105,6 +102,7 @@ for i in range(nfeed / 2):
     inpx.append(corrinputs[xfeeds[i]])
     inpy.append(corrinputs[yfeeds[i]])
 
+print inpx[0]
 
 fn = '/scratch/k/krs/jrs65/chime_archive/20150517T220649Z_pathfinder_corr/00044096_0000.h5'
 
@@ -112,13 +110,13 @@ R = andata.Reader(fn)
 
 Xx = read_data(R, src, xcorrs, freq_sel=freq)
 Xy = read_data(R, src, ycorrs, freq_sel=freq)
-
+print "1"
 data_fs_x = tools.fringestop_pathfinder(\
-     X.vis[:, xcorrs], eph.transit_RA(X.timestamp), X.freq, inpx, src)
+     Xx.vis, eph.transit_RA(Xx.timestamp), Xx.freq, inpx, src)
 
 data_fs_y = tools.fringestop_pathfinder(\
-     X.vis[:, ycorrs], eph.transit_RA(X.timestamp), X.freq, inpy, src)
-
+     Xy.vis, eph.transit_RA(Xy.timestamp), Xy.freq, inpy, src)
+print "2"
 dx, ax = solve_gain(data_fs_x)
 dy, ay = solve_gain(data_fs_y)
 
