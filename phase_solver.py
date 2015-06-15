@@ -70,22 +70,40 @@ def read_data(reader_obj, src, prod_sel, freq_sel=None, del_t=50):
     return and_obj
 
 def run_gain_solver(freq_range):
-    Xx = read_data(R, src, xcorrs, freq_sel=freq_range)
-    #Xy = read_data(R, src, ycorrs, freq_sel=freq_range)   
+    #Xx = read_data(R, src, xcorrs, freq_sel=freq_range, del_t=50)
+    Xy = read_data(R, src, ycorrs, freq_sel=freq_range)   
+    print Xy.vis.shape
+    #data_fs_x = tools.fringestop_pathfinder(\
+    #     Xx.vis, eph.transit_RA(Xx.timestamp), Xx.freq, inpx, src)
 
-    data_fs_x = tools.fringestop_pathfinder(\
-         Xx.vis, eph.transit_RA(Xx.timestamp), Xx.freq, inpx, src)
+    #del Xx
+    data_fs_y = tools.fringestop_pathfinder(\
+         Xy.vis, eph.transit_RA(Xy.timestamp), Xy.freq, inpy, src)
 
-    del Xx
-    #data_fs_y = tools.fringestop_pathfinder(\
-    #     Xy.vis, eph.transit_RA(Xy.timestamp), Xy.freq, inpy, src)
+    print Xy.freq
+    #dx, ax = solve_gain(data_fs_x)
+    dy, ay = solve_gain(data_fs_y)
+    
+    return ay#, ay
 
-    dx, ax = solve_gain(data_fs_x)
-    #dy, ay = solve_gain(data_fs_y.mean(1)[:, np.newaxis])
+def solve_untrans(filename, freq, corrs, inp):
 
-    return ax#, ay
+    
+    f = h5py.File(filename, 'r')
+    v = f['vis'][945:965, freq[0]:freq[-1]+1, corrs]
+    times = f['index_map']['time'].value['ctime'][945:965]
 
-src = eph.CasA
+    vis = v['r'] + 1j * v['i']
+    vis = np.transpose(vis, (1, 2, 0))
+    freq_MHZ = 800.0 - np.array(freq) / 1024.0 * 400.
+
+    data_fs = tools.fringestop_pathfinder(vis, eph.transit_RA(times), freq_MHZ, inp, src) 
+
+    dy, ay = solve_gain(data_fs)
+
+    return ay
+
+src = eph.CygA
 
 nfeed = 256
 
@@ -114,24 +132,27 @@ for i in range(nfeed / 2):
 
 
 fn = '/scratch/k/krs/jrs65/chime_archive/20150517T220649Z_pathfinder_corr/00044096_0000.h5'
+fn = '/mnt/gong/archive/20150517T220649Z_pathfinder_corr/00044096_0000.h5'
+fn = '/mnt/gong/archive/20150531T044659Z_pathfinder_corr/00022098_0000.h5'
+fn = '/mnt/gamelan/untransposed/20150611T200054Z_pathfinder_corr/00044436_0000.h5'
+fn = '/mnt/gong/archive/20150611T200054Z_pathfinder_corr/00044436_0000.h5'
 
 R = andata.Reader(fn)
 
-fch = 8
+fch = 32
 
 for nu in range(1024 // fch):
-    print nu
     freq_range = range(nu * fch, (nu+1) * fch)
     print freq_range
     ax = run_gain_solver(freq_range)
-    del ax
-#outfile = '/scratch/k/krs/connor/outgains' + np.str(freq[0]) + '.hdf5'
+#    ax = solve_untrans(fn, freq_range, xcorrs, inpx)
 
-f = h5py.File(outfile, 'w')
-f.create_dataset('ax', data=ax)
+    outfile = 'outtest_cygx_' + np.str(nu) + '.hdf5'
+    f = h5py.File(outfile, 'w')
+    f.create_dataset('ax', data=ax)
 #f.create_dataset('ay', data=ay)
-f.close()
-
+    f.close()
+    del ax
 
 
 
