@@ -191,19 +191,18 @@ class ReadBeamform:
 
           data_corr = data_corr.reshape(-1, 625, 8).mean(1)
 
-          arr = np.zeros([data_corr.shape[0] / self.nfr / 2 + 1
+          arr = np.zeros([data_corr.shape[0] / self.nfr / 2 + 16
                                    , self.npol, self.nfreq], np.float32)
 
           for pp in range(self.npol):
                for qq in range(self.nfr):
                     ind = np.where((header[:, 0]==pp) & (header[:, 1]==qq))[0]
                     fin = header[0, 2] + 16 * qq + 128 * np.arange(8)
-
                     arr[:len(ind), pp, fin] = data_corr[ind]
 
           del data_corr
 
-          return arr#self.rebin_time(arr, trb) 
+          return arr
 
 
      def fill_arr(self, header, data, ntimes=None, trb=1):
