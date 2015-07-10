@@ -10,7 +10,7 @@ slot_id = slot.repeat(16)
 
 fpga_dict = {'10161420452671572' : 8,
            '10362099439906844' : 6,
-           '13547143200256028' : 1,
+           '6897813178691612' : 1,
            '1354900185165844'  : 15,
            '13759032190185500' : 11,
            '13774983532556316' : 5,
@@ -25,10 +25,26 @@ fpga_dict = {'10161420452671572' : 8,
            '9053112731873364'  : 10,
            '9192752332517468'  : 9}
 
+fpga_dict2  = {'0008': 16,
+              '0014': 14,
+              '0016': 10,
+              '0018': 6,
+              '0019': 3,
+              '0023': 15,
+              '0024': 8,
+              '0025': 11,
+              '0026': 2,
+              '0027': 13,
+              '0030': 4,
+              '0031': 5,
+              '0032': 12,
+              '0055': 9,
+              '0063': 7,
+              '0068': 1}
 
 fpga_list = ['10161420452671572',
            '10362099439906844',
-           '13547143200256028',
+           '6897813178691612',
            '1354900185165844',
            '13759032190185500',
            '13774983532556316',
@@ -43,7 +59,6 @@ fpga_list = ['10161420452671572',
            '9053112731873364',
            '9192752332517468'] 
 
-fn = '/home/chime/gains_jun19/gains_15780492741586972.pkl'
 
 def read_pkl(fn):
      f = open(fn)   
@@ -94,6 +109,8 @@ def this(infile0, infile1, data, freq=range(1024)):
      gain_mat0 = gain_pkl_mat(infile0)
      gain_mat1 = gain_pkl_mat(infile1)
 
+     assert len(freq)==data.shape[0]
+
      data_rm = remove_gain(data, gain_mat0[freq])      
      data_ng = apply_pkl_gain(data_rm, gain_mat1[freq])
 
@@ -136,11 +153,14 @@ def avg_channels(gain_mat, left=14, right=16):
           
 
 def gain_pkl_mat(infile):
+     """ Read in gain*pkl filies and construct an ordered
+     gain matrix out of them.
+     """
      GGpkl = np.zeros([1024, 256], np.complex128)
 
      for fpga_name in fpga_list:
           data_pkl = read_pkl(infile + fpga_name + '.pkl')
-          x=fpga_dict[fpga_name]
+          x = fpga_dict[fpga_name]
 
           feeds = np.where(slot_id==x)[0]#[::-1]                                                           
           feeds = feeds[ch_map]
@@ -151,16 +171,17 @@ def gain_pkl_mat(infile):
 
      return GGpkl
 
-infile = './check_gains/gains_'
+infile = './inp_gains/gains_'
 #infile = './datah5/gains_'
 
 ch_map = [12, 13, 14, 15, 8, 9, 10, 11, 4, 5, 6, 7, 0, 1, 2, 3]
 
 #g = h5py.File('Jun11Gains.hdf5', 'r')
-#Gains = g['gains'][:]
+g = h5py.File('gains_jul8.hdf5', 'r')
+Gains = g['gains'][:]
 
-Gains = construct_gain_mat('transj22_cygx', 64)
-Gains = avg_channels(Gains)
+#Gains = construct_gain_mat('transj22_cygx', 64)
+#Gains = avg_channels(Gains)
 
 if __name__=='__main__':
 
@@ -178,7 +199,7 @@ if __name__=='__main__':
 
           # Write pickle
           outfile =  '/home/chime/gains_jun19/gains_' + fpga_name + '.pkl'
-          outfile = './check_gains_out/gains_' + fpga_name + '.pkl'
+          outfile = './outp_gains/gains_' + fpga_name + '.pkl'
           write_pkl(outfile, data_pkl)
           print "=================================="
 

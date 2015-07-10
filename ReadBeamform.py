@@ -11,6 +11,7 @@ class ReadBeamform:
           self.npol = 2
           self.nfq = 8 # Number of frequencies in each frame
           self.nfreq = 1024 # Total number of freq
+          self.nmm = 625
 
      @property
      def header_dict(self):
@@ -136,26 +137,44 @@ class ReadBeamform:
           for ts, buf in pcap:
                k += 1
 
-               if ((k >= self.pmax) or (k < self.pmin)):
+               if (k >= self.pmax):
+                    break
+               if (k < self.pmin):
                     continue
 
                eth = dpkt.ethernet.Ethernet(buf)
                ip = eth.data
                tcp = ip.data
+               
+               # Instead of tcp, open the file, read in 5032 bytes
+               # after an open
 
                header.append(self.parse_header(tcp.data[:32]))
                data.append(self.str_to_int(tcp.data[32:])[np.newaxis])
 
-          data = np.concatenate(data).reshape(len(header), -1)
-          header = np.concatenate(header).reshape(-1, 5)
+          if len(header) >= 1:
 
-          return header, data
+               data = np.concatenate(data).reshape(len(header), -1)
+               header = np.concatenate(header).reshape(-1, 5)
 
-     def get_times(self, header, data_bin, os=0):
-          nframes = header.shape[0]
-          t_sec = nframes / 625.0 / self.npol / self.nfr
+               return header, data
+
+     def get_times(self, header, os=0):
+          """ Take seconds after J2000 and frame number from 
+          header and return time in seconds.
           
-          return np.linspace(os * t_sec, (os+1) * t_sec, data_bin.shape[0])
+          Parameters
+          ----------
+          header : array_like
+          
+          Return
+          ------
+          t_sec : 
+                Time in seconds, length header.shape[0]
+          """
+          t_sec = header[:, -2]/np.float(self.nmm) + header[:, -1].astype(np.float)
+
+          return t_sec
 
      def rebin_time(self, arr, trb):
           """ Rebin data array in time
@@ -191,7 +210,7 @@ class ReadBeamform:
 
           data_corr = data_corr.reshape(-1, 625, 8).mean(1)
 
-          arr = np.zeros([data_corr.shape[0] / self.nfr / 2 + 16
+          arr = np.zeros([data_corr.shape[0] / self.nfr / 2 + 32
                                    , self.npol, self.nfreq], np.float32)
 
           for pp in range(self.npol):
