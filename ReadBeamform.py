@@ -1,5 +1,5 @@
 import numpy as np 
-import dpkt
+#import dpkt
 
 
 class ReadBeamform:
@@ -153,6 +153,44 @@ class ReadBeamform:
                data.append(self.str_to_int(tcp.data[32:])[np.newaxis])
 
           if len(header) >= 1:
+               
+               data = np.concatenate(data).reshape(len(header), -1)
+               header = np.concatenate(header).reshape(-1, 5)
+
+               return header, data
+
+     def read_file_dat(self, fn):
+          """ Get header and data from a pcap file
+   
+          Parameters  
+          ----------                                                                                                   
+          fn : np.str 
+               file name                                                                                        
+
+          Returns
+          -------                                                                                                                                          
+          header : array_like
+               (nt, 5) array, see self.parse_header                                                                                                                                     
+          data : array_like 
+               (nt, ntfr * 2 * nfq)                                                                                                                                                     
+          """
+          fo = open(fn)
+
+          header = []
+          data = []
+          
+          for k in range(np.int(self.pmax)):
+
+               data_str = fo.read(5032)
+               
+               if len(data_str) == 0:
+                    print "Fin File"
+                    break
+               
+               header.append(self.parse_header(data_str[:32]))
+               data.append(self.str_to_int(data_str[32:])[np.newaxis])
+
+          if len(header) >= 1:
 
                data = np.concatenate(data).reshape(len(header), -1)
                header = np.concatenate(header).reshape(-1, 5)
@@ -173,8 +211,23 @@ class ReadBeamform:
                 Time in seconds, length header.shape[0]
           """
           t_sec = header[:, -2]/np.float(self.nmm) + header[:, -1].astype(np.float)
+          t_sec_arr = np.zeros([len(t_sec)//16, 2, 1024])
+          
+          slot_non_z = set(list(header[:, 2]))
 
-          return t_sec
+          for pp in range(self.npol):
+               
+               for qq in range(self.nfr):
+
+                    for ii in slot_non_z:
+
+                         ind = np.where((header[:, 0]==pp) & (header[:, 1]==qq) & (header[:, 2]==ii))[0]
+                         fin = ii + 16 * qq + 128 * np.arange(8)
+
+                         if len(ind) > 0:
+                              t_sec_arr[:len(ind), pp, fin] = t_sec[ind].repeat(8).reshape(-1, 8)
+          
+          return t_sec_arr
 
      def rebin_time(self, arr, trb):
           """ Rebin data array in time
@@ -186,6 +239,10 @@ class ReadBeamform:
 
           return arr.mean(1)
 
+     def times_ret(self, header):
+          times = header[:, -2]/np.float(self.nmm) + header[:, -1].astype(np.float)
+
+          return times
 
      def h_index(self, data, header, trb=1):
           """ Take header and data arrays and reorganize
@@ -212,16 +269,26 @@ class ReadBeamform:
 
           arr = np.zeros([data_corr.shape[0] / self.nfr / 2 + 32
                                    , self.npol, self.nfreq], np.float32)
+          tt = np.zeros([data_corr.shape[0] / self.nfr / 2 + 32
+                                   , self.npol, self.nfreq], np.float64)
 
           for pp in range(self.npol):
                for qq in range(self.nfr):
-                    ind = np.where((header[:, 0]==pp) & (header[:, 1]==qq))[0]
-                    fin = header[0, 2] + 16 * qq + 128 * np.arange(8)
-                    arr[:len(ind), pp, fin] = data_corr[ind]
+                    for ii in range(16):
+                         ind = np.where((header[:, 0]==pp) & (header[:, 1]==qq) & (header[:, 2]==ii))[0]
 
+                         fin = ii + 16 * qq + 128 * np.arange(8)
+
+                         if len(ind) >= 1:
+                              print len(ind)
+                              arr[:len(ind), pp, fin] = data_corr[ind]
+                              
+                              tt[:len(ind), pp, fin] = self.times_ret(header[ind]).repeat(8).reshape(-1, 8)                
           del data_corr
 
-          return arr
+          print tt[0, 0, 11], tt[100, 0, 11]
+
+          return arr, tt
 
 
      def fill_arr(self, header, data, ntimes=None, trb=1):

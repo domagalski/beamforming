@@ -1,61 +1,71 @@
+import os
+
 import numpy as np
 import h5py 
+import glob
 
 import ReadBeamform as rbf
 
-npack = 6e4
 ntrb = 1
 
-fn = 'b0329_3bit_v2.pcap'
-#fn = 'b0329_4bit_v3.pcap'
-fn = '/mnt/gamelan_test/beamforming/test_4bit.pcap'
-fn = './onefeed2_0bit.pcap'
-fn = './sun_2feed_0bit.pcap'
-fn = './b0329+54_4bit.pcap'
-fn = '/home/connor/sun_3feed_b0bit.pcap'
-fn = '/home/connor/sun_2feed_0bit.pcap'
-fn = '/home/connor/sun_2feeds2_0bit.pcap'
-fn = './twofeed_sun22_0bit.pcap'
-fn = './sun_2feed_0_july6.pcap'
-fn = './virA_allfeed5_4bit_july6.pcap'
-fn = './sun_2feed2_0_july6.pcap'
-fn = 'sun_11.135.67.203.0bit_july6.pcap'
-fn = 'b0329.0bit_july10.pcap'
+nfiles = 1000
+
+f_dir = '/drives/0/baseband/20150710T195202Z_chime_beamformed/'
+f_dir = '/drives/0/baseband/20150711T160938Z_chime_beamformed/'
+
+flist = glob.glob(f_dir + '/*dat')
+flist.sort()
 
 arr = []
 t_tot = []
+h_tot = []
 
 print "Frame range:"
 print "------------"
 
-for ii in range(20):
 
-     print "    ", npack*ii, npack*(ii+1)
+RB = rbf.ReadBeamform(pmax=1e6)
 
-     RB = rbf.ReadBeamform(pmin=npack*ii, pmax=npack*(ii+1))
-     read_arrs = RB.read_file(fn)
+for ii in range(100):
+     print "reading %s" % flist[ii]
+
+     if os.path.isfile(flist[ii]) is False:
+          break
+ 
+     read_arrs = RB.read_file_dat(flist[ii])
      
      if read_arrs == None:
-          print "Exiting"
+          print "exiting"
           break
 
      h, d = read_arrs
+     v, tt = RB.h_index(d, h, trb=ntrb)
 
-     v = RB.h_index(d, h, trb=ntrb)
-#    arr.append(v[:len(v)//100 * 100].reshape(-1, 100, 2, 1024).mean(1))
-     arr.append(v)
-     del d
-     t_tot.append(RB.get_times(h))
+     trb = 10
+
+     arr.append(v[:(len(v)//trb)*trb].reshape(-1, trb, 2, 1024).mean(1))
+
+#     tt = RB.get_times(h)
+     
+     del v, d
+     
+     h_tot.append(tt)
+
      del h
 
 arr = np.concatenate(arr)
-t_tot = np.concatenate(t_tot)
+h_tot = np.concatenate(h_tot, axis=0)
+#t_tot = RB.get_times(h_tot)
 
 print "here"
 
-#f = h5py.File(outfile, 'w')
-f = h5py.File('./b0329j11.hdf5', 'w')
+outfile = '/drives/0/liamscratch/b0329.hdf5'
+
+f = h5py.File(outfile, 'w')
 f.create_dataset('arr', data=arr)
-f.create_dataset('times', data=t_tot)
+#f.create_dataset('times', data=t_tot)
+f.create_dataset('header', data=h_tot)
 f.close()
+
+print "Wrote to: ", outfile
 
