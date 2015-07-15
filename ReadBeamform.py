@@ -240,7 +240,11 @@ class ReadBeamform:
 
           return arr.mean(1)
 
-     def times_ret(self, header):
+     def get_times(self, header):
+          """ Takes two time columns of header (seconds since
+          J2000 and packet number) and constructs time array in
+          seconds
+          """
           times = header[:, -2]/np.float(self.nmm) + header[:, -1].astype(np.float)
 
           return times
@@ -262,6 +266,8 @@ class ReadBeamform:
           -------
           arr : array_like (duhh) np.float64
                (ntimes * ntfr, npol, nfreq) array of autocorrelations
+          tt : array_like 
+               Same shape as arr, since each frequency has its own time vector
           """
 
           slots = set(header[:, 2])
@@ -287,7 +293,7 @@ class ReadBeamform:
 
                               arr[:len(ind), pp, fin] = data_corr[ind]
                               
-                              tt[:len(ind), pp, fin] = self.times_ret(header[ind]).repeat(8).reshape(-1, 8)
+                              tt[:len(ind), pp, fin] = self.get_times(header[ind]).repeat(8).reshape(-1, 8)
                               
                               tt[len(ind):, pp, fin] = tt[len(ind)-1, pp, fin]
 
