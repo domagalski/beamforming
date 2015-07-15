@@ -12,6 +12,7 @@ class ReadBeamform:
           self.nfq = 8 # Number of frequencies in each frame
           self.nfreq = 1024 # Total number of freq
           self.nmm = 625
+          self.frame_size = 5032 # Frame size in bytes
 
      @property
      def header_dict(self):
@@ -181,12 +182,12 @@ class ReadBeamform:
           
           for k in range(np.int(self.pmax)):
 
-               data_str = fo.read(5032)
-               
+               data_str = fo.read(self.frame_size)
+
                if len(data_str) == 0:
                     print "Fin File"
                     break
-               
+
                header.append(self.parse_header(data_str[:32]))
                data.append(self.str_to_int(data_str[32:])[np.newaxis])
 
@@ -263,13 +264,16 @@ class ReadBeamform:
                (ntimes * ntfr, npol, nfreq) array of autocorrelations
           """
 
+          slots = set(header[:, 2])
+          print "Data has", len(slots), "slots: ", slots
+
           data_corr = data[:, 0::2]**2 + data[:, 1::2]**2
 
           data_corr = data_corr.reshape(-1, 625, 8).mean(1)
 
-          arr = np.zeros([data_corr.shape[0] / self.nfr / 2 + 32
+          arr = np.zeros([data_corr.shape[0] / self.nfr / 2 / len(slots) + 64
                                    , self.npol, self.nfreq], np.float32)
-          tt = np.zeros([data_corr.shape[0] / self.nfr / 2 + 32
+          tt = np.zeros([data_corr.shape[0] / self.nfr / 2 / len(slots) + 64
                                    , self.npol, self.nfreq], np.float64)
 
           for pp in range(self.npol):
@@ -280,13 +284,15 @@ class ReadBeamform:
                          fin = ii + 16 * qq + 128 * np.arange(8)
 
                          if len(ind) >= 1:
-                              print len(ind)
+
                               arr[:len(ind), pp, fin] = data_corr[ind]
                               
-                              tt[:len(ind), pp, fin] = self.times_ret(header[ind]).repeat(8).reshape(-1, 8)                
-          del data_corr
+                              tt[:len(ind), pp, fin] = self.times_ret(header[ind]).repeat(8).reshape(-1, 8)
+                              
+                              tt[len(ind):, pp, fin] = tt[len(ind)-1, pp, fin]
 
-          print tt[0, 0, 11], tt[100, 0, 11]
+
+          del data_corr
 
           return arr, tt
 
