@@ -12,13 +12,17 @@ nfiles = 1000
 
 f_dir = '/drives/0/baseband/20150710T195202Z_chime_beamformed/'
 f_dir = '/drives/0/baseband/20150711T160938Z_chime_beamformed/'
+f_dir = '/drives/0/baseband/20150716T194720Z_chime_beamformed/' # Solar both pol one feed
+f_dir = '/drives/0/baseband/20150717T172614Z_chime_beamformed/'
+f_dir = '/drives/0/baseband/20150717T194826Z_chime_beamformed/'
+f_dir = '/drives/0/baseband/20150718T154633Z_chime_beamformed/' # One pol has ~10 beams on the same cylinder
 
 flist = glob.glob(f_dir + '/*dat')
 flist.sort()
 
 arr = []
-t_tot = []
-h_tot = []
+
+tt_tot = []
 
 print "Frame range:"
 print "------------"
@@ -26,7 +30,7 @@ print "------------"
 
 RB = rbf.ReadBeamform(pmax=1e6)
 
-for ii in range(100):
+for ii in range(0, 100, 1):
      print "reading %s" % flist[ii]
 
      if os.path.isfile(flist[ii]) is False:
@@ -43,28 +47,30 @@ for ii in range(100):
 
      trb = 10
 
-     arr.append(v[:(len(v)//trb)*trb].reshape(-1, trb, 2, 1024).mean(1))
+     v = v[:(len(v)//trb)*trb].reshape(-1, trb, 2, 1024)
+     nonz = np.where(v==0, 0, 1).sum(1)
 
-#     tt = RB.get_times(h)
+     #arr.append(v[:(len(v)//trb)*trb].reshape(-1, trb, 2, 1024).mean(1))
+     arr.append(v.sum(1) / nonz)
      
      del v, d
      
-     h_tot.append(tt)
+     tt_tot.append(tt)
 
      del h
 
 arr = np.concatenate(arr)
-h_tot = np.concatenate(h_tot, axis=0)
+tt_tot = np.concatenate(tt_tot, axis=0)
 #t_tot = RB.get_times(h_tot)
 
 print "here"
 
-outfile = '/drives/0/liamscratch/b0329.hdf5'
+outfile = '/drives/0/liamscratch/b0329+54_10feeds.hdf5'
 
 f = h5py.File(outfile, 'w')
 f.create_dataset('arr', data=arr)
 #f.create_dataset('times', data=t_tot)
-f.create_dataset('header', data=h_tot)
+f.create_dataset('times', data=tt_tot)
 f.close()
 
 print "Wrote to: ", outfile
