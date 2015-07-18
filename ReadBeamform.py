@@ -98,7 +98,7 @@ class ReadBeamform:
           raw_im = ((raw & 0xf).astype(np.int8) - 8).astype(np.float32)
 
           data = np.zeros([2*len(raw_re)], dtype=np.float32)
-          data[::2] = raw_re
+          data[0::2] = raw_re
           data[1::2] = raw_im
 
           return data
@@ -198,37 +198,13 @@ class ReadBeamform:
 
                return header, data
 
-     def get_times(self, header, os=0):
-          """ Take seconds after J2000 and frame number from 
-          header and return time in seconds.
-          
-          Parameters
-          ----------
-          header : array_like
-          
-          Return
-          ------
-          t_sec : 
-                Time in seconds, length header.shape[0]
+     def J2000_to_unix(self, t_j2000):
+          """ Takes seconds since J2000 and returns 
+          a unix time
           """
-          t_sec = header[:, -2]/np.float(self.nmm) + header[:, -1].astype(np.float)
-          t_sec_arr = np.zeros([len(t_sec)//16, 2, 1024])
-          
-          slot_non_z = set(list(header[:, 2]))
+          J2000_unix = 946728000.0
 
-          for pp in range(self.npol):
-               
-               for qq in range(self.nfr):
-
-                    for ii in slot_non_z:
-
-                         ind = np.where((header[:, 0]==pp) & (header[:, 1]==qq) & (header[:, 2]==ii))[0]
-                         fin = ii + 16 * qq + 128 * np.arange(8)
-
-                         if len(ind) > 0:
-                              t_sec_arr[:len(ind), pp, fin] = t_sec[ind].repeat(8).reshape(-1, 8)
-          
-          return t_sec_arr
+          return t_j2000 + J2000_unix
 
      def rebin_time(self, arr, trb):
           """ Rebin data array in time
@@ -275,7 +251,12 @@ class ReadBeamform:
 
           data_corr = data[:, 0::2]**2 + data[:, 1::2]**2
 
-          data_corr = data_corr.reshape(-1, 625, 8).mean(1)
+
+          data_corr = data_corr.reshape(-1, 625, 8) 
+          nonz_count = np.where(data_corr[:, :, :]==0, 0, 1).sum(1)
+          
+          data_corr = data_corr.sum(1) / nonz_count
+          data_corr[np.isnan(data_corr)] = 0.0
 
           arr = np.zeros([data_corr.shape[0] / self.nfr / 2 / len(slots) + 64
                                    , self.npol, self.nfreq], np.float32)
@@ -288,8 +269,11 @@ class ReadBeamform:
                          ind = np.where((header[:, 0]==pp) & (header[:, 1]==qq) & (header[:, 2]==ii))[0]
 
                          fin = ii + 16 * qq + 128 * np.arange(8)
+                         
+                         if len(ind) > arr.shape[0]:
+                              print ":(", len(slots), arr.shape
 
-                         if len(ind) >= 1:
+                         if (len(ind) >= 1) and (len(ind) < arr.shape[0]):
 
                               arr[:len(ind), pp, fin] = data_corr[ind]
                               
@@ -300,7 +284,7 @@ class ReadBeamform:
 
           del data_corr
 
-          return arr, tt
+          return arr, self.J2000_to_unix(tt)
 
 
      def fill_arr(self, header, data, ntimes=None, trb=1):
