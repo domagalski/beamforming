@@ -6,9 +6,9 @@ import glob
 
 import ReadBeamform as rbf
 
-ntrb = 1
-
-nfiles = 1000
+trb = 1 # Factor to rebin data array by
+nfiles = 10 # Total number of files to use
+f_step = 1 # step between files
 
 f_dir = '/drives/0/baseband/20150710T195202Z_chime_beamformed/'
 f_dir = '/drives/0/baseband/20150711T160938Z_chime_beamformed/'
@@ -26,13 +26,14 @@ arr = []
 
 tt_tot = []
 
+print "------------"
 print "Frame range:"
 print "------------"
 
 
 RB = rbf.ReadBeamform(pmax=1e8)
 
-for ii in range(0, 100, 20):
+for ii in range(0, nfiles, f_step):
      print "reading %s" % flist[ii]
 
      if os.path.isfile(flist[ii]) is False:
@@ -44,22 +45,16 @@ for ii in range(0, 100, 20):
           print "exiting"
           break
 
-     h, d = read_arrs
-     v, tt = RB.h_index(d, h, trb=ntrb)
-
-     trb = 1
-
-     #v = v[:(len(v)//trb)*trb].reshape(-1, trb, 2, 1024)
-     #nonz = np.where(v==0, 0, 1).sum(1)
+     header, data = read_arrs
+     v, tt = RB.h_index(data, header)
 
      arr.append(v[:(len(v)//trb)*trb].reshape(-1, trb, 2, 1024).mean(1))
-     #arr.append(v.sum(1) / nonz)
      
-     del v, d
+     del v, data
      
      tt_tot.append(tt)
 
-     del h
+     del header
 
 arr = np.concatenate(arr)
 tt_tot = (np.concatenate(tt_tot, axis=0))[::trb]
