@@ -251,7 +251,6 @@ class ReadBeamform:
 
           data_corr = data[:, 0::2]**2 + data[:, 1::2]**2
 
-
           data_corr = data_corr.reshape(-1, 625, 8) 
           nonz_count = np.where(data_corr[:, :, :]==0, 0, 1).sum(1)
           
@@ -271,7 +270,7 @@ class ReadBeamform:
                          fin = ii + 16 * qq + 128 * np.arange(8)
                          
                          if len(ind) > arr.shape[0]:
-                              print ":(", len(slots), arr.shape
+                              print "Skipping, ind is too short"
 
                          if (len(ind) >= 1) and (len(ind) < arr.shape[0]):
 
