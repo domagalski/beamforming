@@ -341,3 +341,7 @@ class ReadBeamform:
 def JDr_to_unix(JD):
      
      return (JDr + 2400000.0 - 2440587.5) * 86400.0
+
+def unix_to_JDr(t_unix):
+     
+     return (t_unix / 86400.0) + 2440587.5 - 2400000.0
