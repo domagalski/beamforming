@@ -26,7 +26,8 @@ class ReadBeamform:
                          'frame'   : [1, 0, 23],
                          'link'    : [3, 16, 19],
                          'slot'    : [3, 20, 25],
-                         'station' : [3, 0, 15]
+                         'station' : [3, 0, 15],
+                         'eud2'    : [5, 0, 32]
                          }
 
           return header_dict
@@ -63,14 +64,16 @@ class ReadBeamform:
           stat_ind = hdict['station']
           link_ind = hdict['link']
           slot_ind = hdict['slot']
+          eud2_ind = hdict['eud2']
 
           station = self.bit_manip(head_int[stat_ind[0]], stat_ind[1], stat_ind[2])
           link = self.bit_manip(head_int[link_ind[0]], link_ind[1], link_ind[2])
           slot = self.bit_manip(head_int[slot_ind[0]], slot_ind[1], slot_ind[2])
           frame = self.bit_manip(head_int[frame_ind[0]], frame_ind[1], frame_ind[2])
           time = self.bit_manip(head_int[t_ind[0]], t_ind[1], t_ind[2])
+          count = self.bit_manip(head_int[eud2_ind[0]], eud2_ind[1], eud2_ind[2])
 
-          return station, link, slot, frame, time
+          return station, link, slot, frame, time, count
 
      def open_pcap(self, fn):
           """ Reads in pcap file with dpkt package
@@ -156,7 +159,7 @@ class ReadBeamform:
           if len(header) >= 1:
                
                data = np.concatenate(data).reshape(len(header), -1)
-               header = np.concatenate(header).reshape(-1, 5)
+               header = np.concatenate(header).reshape(-1, 6)
 
                return header, data
 
@@ -194,7 +197,7 @@ class ReadBeamform:
           if len(header) >= 1:
 
                data = np.concatenate(data).reshape(len(header), -1)
-               header = np.concatenate(header).reshape(-1, 5)
+               header = np.concatenate(header).reshape(-1, 6)
 
                return header, data
 
@@ -221,7 +224,7 @@ class ReadBeamform:
           J2000 and packet number) and constructs time array in
           seconds
           """
-          times = header[:, -2]/np.float(self.nmm) + header[:, -1].astype(np.float)
+          times = header[:, -3]/np.float(self.nmm) + header[:, -2].astype(np.float)
 
           return times
 
@@ -251,15 +254,16 @@ class ReadBeamform:
 
           data_corr = data[:, 0::2]**2 + data[:, 1::2]**2
 
-          data_corr = data_corr.reshape(-1, 625, 8) 
-          nonz_count = np.where(data_corr[:, :, :]==0, 0, 1).sum(1)
-          
-          data_corr = data_corr.sum(1) / nonz_count
-          data_corr[np.isnan(data_corr)] = 0.0
+          data_corr = data_corr.reshape(-1, 625, 8).mean(1)
 
-          arr = np.zeros([data_corr.shape[0] / self.nfr / 2 / len(slots) + 64
+#          This was before I knew andata did NOT correct for packetloss.
+#          nonz_count = np.where(data_corr[:, :, :]==0, 0, 1).sum(1)
+#          data_corr = data_corr.sum(1) / nonz_count
+#          data_corr[np.isnan(data_corr)] = 0.0
+
+          arr = np.zeros([data_corr.shape[0] / self.nfr / 2 / len(slots) + 256
                                    , self.npol, self.nfreq], np.float32)
-          tt = np.zeros([data_corr.shape[0] / self.nfr / 2 / len(slots) + 64
+          tt = np.zeros([data_corr.shape[0] / self.nfr / 2 / len(slots) + 256
                                    , self.npol, self.nfreq], np.float64)
 
           for pp in range(self.npol):
@@ -271,6 +275,7 @@ class ReadBeamform:
                          
                          if len(ind) > arr.shape[0]:
                               print "Skipping, ind is too short"
+                              print len(ind), arr.shape
 
                          if (len(ind) >= 1) and (len(ind) < arr.shape[0]):
 
