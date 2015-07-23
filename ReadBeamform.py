@@ -219,12 +219,16 @@ class ReadBeamform:
 
           return arr.mean(1)
 
-     def get_times(self, header):
+     def get_times(self, header, seq=True):
           """ Takes two time columns of header (seconds since
           J2000 and packet number) and constructs time array in
           seconds
           """
           times = header[:, -3]/np.float(self.nmm) + header[:, -2].astype(np.float)
+          
+          if seq is True:
+               seq = header[:, -1] 
+               times = (seq - seq[0]) / 625.0**2 + times[0]
 
           return times
 
@@ -334,3 +338,6 @@ class ReadBeamform:
           return self.rebin_time(arr, trb)
 
 
+def JDr_to_unix(JD):
+     
+     return (JDr + 2400000.0 - 2440587.5) * 86400.0
