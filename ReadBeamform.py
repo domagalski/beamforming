@@ -303,6 +303,34 @@ class ReadBeamform:
 
           return arr, self.J2000_to_unix(tt)
 
+     def hind2(self, header, data):
+          
+          seq = list(set(header[:, -1]))
+
+          for pp in range(self.npol):
+               for qq in range(self.nfr):
+                    for ii in range(16):
+                         for tt in range(len(seq)):
+
+                              ind = np.where((header[:, 0]==pp) & (header[:, 1]==qq) & (header[:, 2]==ii) & (header[:, -1]==seq[tt]))[0]
+                              print ind
+                              """
+                         fin = ii + 16 * qq + 128 * np.arange(8)
+                         
+                         if len(ind) > arr.shape[0]:
+                              print "Skipping, ind is too short"
+                              print len(ind), arr.shape
+
+                         if (len(ind) >= 1) and (len(ind) < arr.shape[0]):
+
+                              # Could change ":len(ind)" to time_ind or something.
+                              arr[:len(ind), pp, fin] = data_corr[ind]
+                              
+                              tt[:len(ind), pp, fin] = self.get_times(header[ind]).repeat(8).reshape(-1, 8)
+                              
+                              tt[len(ind):, pp, fin] = tt[len(ind)-1, pp, fin]
+                              """
+
 
      def fill_arr(self, header, data, ntimes=None, trb=1):
           """ Take header and data arrays and reorganize
