@@ -232,6 +232,14 @@ class ReadBeamform:
 
           return times
 
+     def corrbin(self, data):
+
+          data_corr = data[:, 0::2]**2 + data[:, 1::2]**2
+
+          data_corr = data_corr.reshape(-1, 625, 8).mean(1) 
+
+          return data_corr         
+
      def h_index(self, data, header, trb=1):
           """ Take header and data arrays and reorganize
           to produce the full time, pol, freq array
@@ -283,6 +291,7 @@ class ReadBeamform:
 
                          if (len(ind) >= 1) and (len(ind) < arr.shape[0]):
 
+                              # Could change ":len(ind)" to time_ind or something.
                               arr[:len(ind), pp, fin] = data_corr[ind]
                               
                               tt[:len(ind), pp, fin] = self.get_times(header[ind]).repeat(8).reshape(-1, 8)
