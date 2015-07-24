@@ -9,10 +9,10 @@ import ReadBeamform as rbf
 npol = 2
 nfreq = 1024
 trb = 1 # Factor to rebin data array by
-nfiles = 5 # Total number of files to use
-f_start = 0
+nfiles = 100 # Total number of files to use
+f_start = 3840
 f_step = 1 # step between files
-n_save = 100 # Save down every n_save files
+n_save = 20 # Save down every n_save files
 
 f_dir = '/drives/0/baseband/20150710T195202Z_chime_beamformed/'
 f_dir = '/drives/0/baseband/20150711T160938Z_chime_beamformed/'
