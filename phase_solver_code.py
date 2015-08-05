@@ -5,29 +5,6 @@ import h5py
 import misc_data_io as misc
 from ch_util import andata, ephemeris as eph, tools
 
-flist = [48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 
-         60, 61, 62, 63, 16, 17, 18, 19, 20, 21, 22, 23, 
-         24, 25, 26, 27, 28, 29, 30, 31, 240, 241, 242, 
-         243, 244, 245, 246, 247, 248, 249, 250, 251, 252,
-         253, 254, 255, 208, 209, 210, 211, 212, 213, 214,
-         215, 216, 217, 218, 219, 220, 221, 222, 223, 32, 
-         33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 
-         46, 47, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 
-         13, 14, 15, 224, 225, 226, 227, 228, 229, 230, 231, 
-         232, 233, 234, 235, 236, 237, 238, 239, 192, 193,
-         194, 195, 196, 197, 198, 199, 200, 201, 202, 203,
-         204, 205, 206, 207, 112, 113, 114, 115, 116, 117,
-         118, 119, 120, 121, 122, 123, 124, 125, 126, 127,
-         80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 
-         93, 94, 95, 176, 177, 178, 179, 180, 181, 182, 183, 
-         184, 185, 186, 187, 188, 189, 190, 191, 144, 145, 
-         146, 147, 148, 149, 150, 151, 152, 153, 154, 155, 
-         156, 157, 158, 159, 96, 97, 98, 99, 100, 101, 102, 
-         103, 104, 105, 106, 107, 108, 109, 110, 111, 64, 65,
-         66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 
-         79, 160, 161, 162, 163, 164, 165, 166, 167, 168, 169,
-         170, 171, 172, 173, 174, 175, 128, 129, 130, 131, 132, 
-         133, 134, 135, 136, 137, 138, 139, 140, 141, 142, 143]
 
 def solve_gain(data, feeds=None):
     """
@@ -197,98 +174,29 @@ def rearrange_list(corrinputs, nfeeds=256):
     return inp_real
 
 
-fn = '/scratch/k/krs/jrs65/chime_archive/20150517T220649Z_pathfinder_corr/00044096_0000.h5'
-fn = '/mnt/gong/archive/20150517T220649Z_pathfinder_corr/00044096_0000.h5'
-fn = '/mnt/gong/archive/20150531T044659Z_pathfinder_corr/00022098_0000.h5'
-fn = '/mnt/gamelan/untransposed/20150611T200054Z_pathfinder_corr/00044436_0000.h5'
-fn = '/mnt/gong/archive/20150611T200054Z_pathfinder_corr/00044436_0000.h5'
-fn0 = '/mnt/gong/archive/20150615T222450Z_pathfinder_corr/00022101_0000.h5'
-fn = '/mnt/gamelan/untransposed/20150616T221633Z_pathfinder_corr/00000006_0000.h5'
-fn = '/mnt/gamelan/untransposed/20150619T031801Z_pathfinder_corr/00022123_0000.h5'
-fn = '/mnt/gong/archive/20150620T205838Z_pathfinder_corr/00044135_0000.h5'
-fn = '/mnt/gong/untransposed/20150705T033000Z_pathfinder_corr/00088100_0000.h5'
-fn = '/mnt/gamelan/untransposed/20150706T194548Z_pathfinder_corr/00044516_0000.h5'
-#fn = '/mnt/gamelan/untransposed/20150708T013116Z_pathfinder_corr/00022226_0000.h5'
-fn = '/mnt/gamelan/untransposed/20150709T011642Z_pathfinder_corr/00022289_0000.h5'
+flist = [48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 
+         60, 61, 62, 63, 16, 17, 18, 19, 20, 21, 22, 23, 
+         24, 25, 26, 27, 28, 29, 30, 31, 240, 241, 242, 
+         243, 244, 245, 246, 247, 248, 249, 250, 251, 252,
+         253, 254, 255, 208, 209, 210, 211, 212, 213, 214,
+         215, 216, 217, 218, 219, 220, 221, 222, 223, 32, 
+         33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 
+         46, 47, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 
+         13, 14, 15, 224, 225, 226, 227, 228, 229, 230, 231, 
+         232, 233, 234, 235, 236, 237, 238, 239, 192, 193,
+         194, 195, 196, 197, 198, 199, 200, 201, 202, 203,
+         204, 205, 206, 207, 112, 113, 114, 115, 116, 117,
+         118, 119, 120, 121, 122, 123, 124, 125, 126, 127,
+         80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 
+         93, 94, 95, 176, 177, 178, 179, 180, 181, 182, 183, 
+         184, 185, 186, 187, 188, 189, 190, 191, 144, 145, 
+         146, 147, 148, 149, 150, 151, 152, 153, 154, 155, 
+         156, 157, 158, 159, 96, 97, 98, 99, 100, 101, 102, 
+         103, 104, 105, 106, 107, 108, 109, 110, 111, 64, 65,
+         66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 
+         79, 160, 161, 162, 163, 164, 165, 166, 167, 168, 169,
+         170, 171, 172, 173, 174, 175, 128, 129, 130, 131, 132, 
+         133, 134, 135, 136, 137, 138, 139, 140, 141, 142, 143]
 
-
-#R = andata.Reader(fn)
-
-name = 'CygA'
-src = eph.CygA
-
-nfreq = 1024
-nfeed = 256
-
-xfeeds = range(nfeed/4) + range(2 * nfeed/4, 3 * nfeed/4)
-yfeeds = range(nfeed/4, 2 * nfeed/4) + range(3 * nfeed/4, 4 * nfeed/4)
-
-xcorrs = []
-ycorrs = []
-
-for ii in range(nfeed/2):
-     for jj in range(ii, nfeed/2):
-          xcorrs.append(misc.feed_map(xfeeds[ii], xfeeds[jj], nfeed))
-          ycorrs.append(misc.feed_map(yfeeds[ii], yfeeds[jj], nfeed))
-
-
-corrinputs = tools.get_correlator_inputs(\
-                datetime.datetime(2015, 6, 1, 0, 0, 0), correlator='K7BP16-0004')
-"""
-R = andata.Reader(fn0)
-R.prod_sel = 0
-R.freq_sel = 305
-R.time_sel = [0, 2]
-and_obj = R.read()
-"""
-
-#corrinput_real = rearrange_inp(and_obj, corrinputs, nfeeds=256)
-corrinput_real = rearrange_list(corrinputs, nfeeds=256)
-print corrinput_real[:3]
-
-inpx = []
-inpy = []
-
-for i in range(nfeed/2):
-    inpx.append(corrinput_real[xfeeds[i]])
-    inpy.append(corrinput_real[yfeeds[i]])
-
-fch = 16
-
-"""
-gx = solve_untrans(fn, xcorrs, inpx, src)
-gy = solve_untrans(fn, ycorrs, inpy, src)
-#R = andata.Reader(fn)
-
-g = h5py.File('gainsout_jul9.hdf5', 'w')
-g.create_dataset('gainsx', data=gx)
-g.create_dataset('gainsy', data=gy)
-g.close()
-"""
-"""
-if __name__ == "__main__2":
-    for nu in range(1024 // fch):
-
-        freq_range = range(nu * fch, (nu+1) * fch)
-
-        print nu
-        ax, dx, ay, dy = run_gain_solver(freq_range, xcorrs, ycorrs, inpx, inpy)
-        #    ax, dx = solve_untrans(fn, freq_range, xcorrs, inpx)
-        
-        outfile = './gainsolutions/transj22_cygx' + name + np.str(nu) + '.hdf5'
-
-        f = h5py.File(outfile, 'w')
-        f.create_dataset('ax', data=ax)
-        f.create_dataset('dx', data=dx)
-
-        f.create_dataset('ay', data=ay)
-        f.create_dataset('dry', data=dy)
-
-        f.close()
-        
-        del ax
-
-
-"""
 
 
