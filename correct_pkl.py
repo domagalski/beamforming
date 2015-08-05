@@ -116,7 +116,7 @@ def this(infile0, infile1, data, freq=range(1024)):
 
      return data_ng
 
-def construct_gain_mat(infile, nch, nfreq=1024, nfeed=256):
+def construct_gain_mat_fromfile(infile, nch, nfreq=1024, nfeed=256):
      gain_mat = np.zeros([nfreq, nfeed], np.complex128)
 
      nf = nfreq // nch
@@ -137,6 +137,26 @@ def construct_gain_mat(infile, nch, nfreq=1024, nfeed=256):
           print nu
 
      return gain_mat
+
+def construct_gain_mat(gx, gy, nch, nfreq=1024, nfeed=256):
+     gain_mat = np.zeros([nfreq, nfeed], np.complex128)
+
+     nf = nfreq // nch
+
+     for nu in range(nch):
+
+          print range(nf * nu, nf*(nu+1))
+
+          gain_mat[nf*nu:nf*(nu+1), :64] = gx[:, :64, 8:14].mean(-1)
+          gain_mat[nf*nu:nf*(nu+1), 128:128+64] = gx[:, 64:, 8:14].mean(-1)
+
+          gain_mat[nf*nu:nf*(nu+1), 64:128] = gy[:, :64, 8:14].mean(-1)
+          gain_mat[nf*nu:nf*(nu+1), 128+64:] = gy[:, 64:, 8:14].mean(-1)
+
+          print nu
+
+     return gain_mat
+
 
 def avg_channels(gain_mat, left=14, right=16):
      # Note hack to make them fit. 16::16 is one shorter than 14::16
@@ -171,19 +191,46 @@ def gain_pkl_mat(infile):
 
      return GGpkl
 
-infile = './inp_gains/gains_'
-#infile = './datah5/gains_'
+def do_it_all(Gains, input_pkls):
+
+     for fpga_name in fpga_list:
+          data_pkl = read_pkl(infile + fpga_name + '.pkl')
+          x=fpga_dict[fpga_name]
+     
+          feeds = np.where(slot_id==x)[0]#[::-1]
+          feeds = feeds[ch_map]
+          g = Gains[:, feeds]
+
+          print feeds
+
+          data_pkl = apply_gain(data_pkl, g, 16)     
+
+          # Write pickle
+          outfile =  '/home/chime/gains_jun19/gains_' + fpga_name + '.pkl'
+          outfile = './outp_gains/gains_' + fpga_name + '.pkl'
+          write_pkl(outfile, data_pkl)
+          print "=================================="
+
+          print "Wrote to ", outfile 
+
+          print "=================================="
+
+          print ""
+
 
 ch_map = [12, 13, 14, 15, 8, 9, 10, 11, 4, 5, 6, 7, 0, 1, 2, 3]
 
-#g = h5py.File('Jun11Gains.hdf5', 'r')
-g = h5py.File('gains_jul8.hdf5', 'r')
-Gains = g['gains'][:]
-
-#Gains = construct_gain_mat('transj22_cygx', 64)
-#Gains = avg_channels(Gains)
-
 if __name__=='__main__':
+
+      infile = './inp_gains/gains_'
+      #infile = './datah5/gains_'
+
+      #g = h5py.File('Jun11Gains.hdf5', 'r')
+      g = h5py.File('gains_jul8.hdf5', 'r')
+      Gains = g['gains'][:]
+
+      #Gains = construct_gain_mat('transj22_cygx', 64)
+      #Gains = avg_channels(Gains)  
 
      for fpga_name in fpga_list:
           data_pkl = read_pkl(infile + fpga_name + '.pkl')
