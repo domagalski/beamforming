@@ -204,6 +204,93 @@ def rearrange_list(corrinputs, nfeeds=256):
 
     return inp_real
 
+def gen_inp(nfeed=256):
+    """ Generate input information for feeds
+
+    Parameters
+    ----------
+    feeds : list
+         Feeds whose input info is needed
+    nfeeds : int
+         Number of feeds in total
+
+    Returns
+    -------
+    corrinput_real : 
+         All 256 inputs
+    inpx : 
+         Only x feeds
+    inpy : 
+         Only y feeds
+    """
+
+    # Assumes a standard layout for 128 feeds on each cyl
+    xfeeds = range(nfeed/4) + range(2 * nfeed/4, 3 * nfeed/4)
+    yfeeds = range(nfeed/4, 2 * nfeed/4) + range(3 * nfeed/4, 4 * nfeed/4)
+
+    xcorrs = []
+    ycorrs = []
+
+    for ii in range(nfeed/2):
+        for jj in range(ii, nfeed/2):
+            xcorrs.append(misc.feed_map(xfeeds[ii], xfeeds[jj], nfeed))
+            ycorrs.append(misc.feed_map(yfeeds[ii], yfeeds[jj], nfeed))
+
+    corrinputs = tools.get_correlator_inputs(\
+        datetime.datetime(2015, 6, 1, 0, 0, 0), correlator='K7BP16-0004')
+
+    # Need to rearrange to match order in the correlated data
+    corrinput_real = rearrange_list(corrinputs, nfeeds=256)
+
+    inpx = []
+    inpy = []
+    
+    for i in range(nfeed/2):
+        inpx.append(corrinput_real[xfeeds[i]])
+        inpy.append(corrinput_real[yfeeds[i]])
+
+    return corrinput_real, inpx, inpy, xcorrs, ycorrs
+
+def select_corrs(data, feeds, nfeed=256):
+    corrs = []
+    
+    for ii in range(len(feeds)):
+        for jj in range(ii, len(feeds)):
+            corrs.append(misc.feed_map(feeds[ii], feeds[jj], nfeed))
+    
+    return data[:, corrs]
+
+def fringestop_do_it_all(fn, feeds, freq, src, return_unfs=False):                                                 
+    r = andata.Reader(fn)
+    r.freq_sel = freq
+    X = r.read()
+    times = r.time[::2]
+
+    print "Read it, bruh"
+
+    del_t = 750.0
+    src_trans = eph.transit_times(src, times[0])
+
+    # Select +-100 seconds of transit                                                                                                                                       
+    t_range = np.where((times < src_trans + del_t) & (times > src_trans - del_t))[0]
+
+    corrinput_real = gen_inp()[0]
+    inp = np.array(corrinput_real)[feeds]
+
+    data = X.vis[..., ::2]
+    data -= (data[..., t_range[0]] + data[..., t_range[-1]])[..., np.newaxis] / 2.0
+    print t_range[0], t_range[-1]
+
+    data = select_corrs(data, feeds)
+
+    ra = eph.transit_RA(times)
+
+    dfs = tools.fringestop_pathfinder(data, ra, X.freq, inp, src)
+
+    if return_unfs is True:
+        return dfs, ra, data
+    else:
+        return dfs, ra
 
 flist = [48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 
          60, 61, 62, 63, 16, 17, 18, 19, 20, 21, 22, 23, 
