@@ -5,6 +5,21 @@ import h5py
 import misc_data_io as misc
 from ch_util import andata, ephemeris as eph, tools
 
+import matplotlib
+import matplotlib.pyplot as plt
+matplotlib.use('Agg')    
+
+def plt_gains(vis, nu, img_name='out.png'):
+    fig = plt.figure(figsize=(14,14))
+    
+    for i in range(128):
+        fig.add_subplot(32, 4, i+1)
+        plt.plot(np.angle(vis[nu, misc.feed_map(1, i+1, 128)]))
+        plt.axis('off')
+        plt.axhline(0.0)
+        plt.ylim(-np.pi, np.pi)
+
+    fig.savefig(img_name)
 
 def solve_gain(data, feeds=None):
     """
@@ -101,7 +116,7 @@ def run_gain_solver(freq_range, xcorrs, ycorrs, inpx, inpy):
 
     return ax, dx, ay, dy
 
-def solve_untrans(filename, corrs, inp, src):
+def solve_untrans(filename, corrs, inp, src, nfreq=1024):
     del_t = 400
 
     f = h5py.File(filename, 'r')
@@ -125,9 +140,9 @@ def solve_untrans(filename, corrs, inp, src):
 
     print "Done reading array"
 
-    for i in range(8):
+    for i in range(16):
 
-        frq = range(i * nfreq // 8, (i+1) * nfreq // 8)
+        frq = range(i * nfreq // 16, (i+1) * nfreq // 16)
 
         print "      ", frq[0], ":", frq[-1]
 
@@ -139,13 +154,29 @@ def solve_untrans(filename, corrs, inp, src):
         
         data_fs = tools.fringestop_pathfinder(vis, eph.transit_RA(times), freq_MHZ, inp, src)
         dr, a = solve_gain(data_fs)
-        
+
         Gains[frq] = a 
-    
+
+        plt_gains(data_fs, 0, img_name='./phs_plots/dfs' + np.str(frq[0]) + '.png')
+        dfs_corr = correct_dfs(data_fs, Gains[frq], nfeed=128)
+        plt_gains(dfs_corr, 0, img_name='./phs_plots/dfs_corr' + np.str(frq[0]) + '.png')
+        
+
     del v, vis, data_fs
 
     return Gains
 
+def correct_dfs(dfs, Gains, nfeed=256):
+    """ Corrects fringestopped visibilities
+    """
+
+    dfs_corrm = dfs.copy()
+    
+    for i in range(nfeed):
+        for j in range(i, nfeed):
+            dfs_corrm[:, misc.feed_map(i, j, 128)] *= np.conj(Gains[:, i] * np.conj(Gains[:, j]))
+            
+    return dfs_corrm
 
 def rearrange_inp(and_obj, corrinputs, nfeeds=256):
     """ Blegh
