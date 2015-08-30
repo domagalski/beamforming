@@ -359,7 +359,7 @@ def fringestop_and_sum(fn, feeds, freq, src, transposed=True, return_unfs=False,
     dfs_sum = sum_corrs(dfs, feeds)
 
     if return_unfs is True:
-        return dfs_sum, ra_, dfs, data_unfs
+        return dfs_sum, ra_, dfs, data
     else:
         return dfs_sum, ra_
 
