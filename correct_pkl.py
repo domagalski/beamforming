@@ -10,23 +10,6 @@ import phase_solver_code as pc
 slot = np.array([4, 2, 16, 14, 3, 1, 15, 13, 8, 6, 12, 10, 7, 5, 11, 9])
 slot_id = slot.repeat(16)
 
-fpga_dict = {'10161420452671572': 8,
-           '10362099439906844' : 6,
-           '6897813178691612'  : 1,
-           '20522120145121364' : 3,
-           '13759032190185500' : 11,
-           '13774983532556316' : 5,
-           '15780492741586972' : 12,
-           '15808512172929116' : 14,
-           '20310480648056916' : 13,
-           '2269693859475484'  : 4,
-           '2516293578010644'  : 7,
-           '29389679799218268' : 16,
-           '4521493673160724'  : 2,
-           '31710750469369940' : 15,
-           '7019893205381148'  : 10,
-           '9192752332517468'  : 9}
-
 fpga_dict = {'8': 8,
            '6' : 6,
            '1'  : 1,
@@ -149,27 +132,6 @@ def this(infile0, infile1, data, freq=range(1024)):
 
      return data_ng
 
-def construct_gain_mat_fromfile(infile, nch, nfreq=1024, nfeed=256):
-     gain_mat = np.zeros([nfreq, nfeed], np.complex128)
-
-     nf = nfreq // nch
-
-     for nu in range(nch):
-          g = h5py.File(infile + np.str(nu) + '.hdf5', 'r')
-          gx = g['ax'][:]
-          gy = g['ay'][:]
-
-          print range(nf * nu, nf*(nu+1))
-
-          gain_mat[nf*nu:nf*(nu+1), :64] = gx[:, :64, 8:14].mean(-1)
-          gain_mat[nf*nu:nf*(nu+1), 128:128+64] = gx[:, 64:, 8:14].mean(-1)
-
-          gain_mat[nf*nu:nf*(nu+1), 64:128] = gy[:, :64, 8:14].mean(-1)
-          gain_mat[nf*nu:nf*(nu+1), 128+64:] = gy[:, 64:, 8:14].mean(-1)
-
-          print nu
-
-     return gain_mat
 
 def construct_gain_mat(gx, gy, nch, nfreq=1024, nfeed=256):
      """ Take gains for x and y feeds and construct 
@@ -309,9 +271,7 @@ def check_gain_solution(infile_pkl, infile_h5, freq=305, transposed=True):
 
      # Order of real / imag seems to be switched. Must correct for this.
      Gh5 = g['i'] + 1j * g['r'] 
-"""     
-     
-     
+"""
 
 def compare_pkl_to_h5(fn, input_pkls, trans=False):
      f = h5py.File(fn, 'r')
