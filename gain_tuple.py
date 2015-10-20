@@ -20,7 +20,7 @@ def getjs(gains):
      """ Produce dictionary with gains in json 
      dumpable format
      """
-     return JSONEncoder().encode({
+     return json.JSONEncoder().encode({
                          "type": "beamform_gains", 
                          "gains": gains
                          })
