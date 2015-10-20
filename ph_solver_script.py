@@ -1,80 +1,68 @@
+import os
+
 import numpy as np
 import h5py
 import argparse
+import datetime
 
 import phase_solver_code as psolv 
 import correct_pkl 
+from ch_util import tools
+import ch_util.ephemeris as eph
+import misc_data_io as misc
 
 parser = argparse.ArgumentParser(description="This script RFI-cleans, fringestops, and folds the pulsar data.")
 parser.add_argument("fn", help="datafile")
 parser.add_argument("src", help="Name of src to calibrate off")
 parser.add_argument("outfile", help="outfile prefix")
-parser.add_argument("-input_pkls", help="outfile prefix", default='./inp_gains/gains_')
+parser.add_argument("-input_pkls", help="outfile prefix", default='./inp_gains/gains_slot')
 parser.add_argument("-nfreq", help="Number of frequencies in acquisition", default=1024, type=int)
 parser.add_argument("-nfeed", help="Number of feeds in acquisition", default=256, type=int)
+parser.add_argument("-trans", help="Is the data already transposed", default=0, type=int)
+parser.add_argument("-doall", help="do only the last bit", default=1, type=int)
 
 args = parser.parse_args()
 
 name = args.src
-src = eph.CygA # Need to figure out how to turn str into variable
 
-nfreq = args.nfreq
-nfeed = arg.nfeed
+g = h5py.File(args.outfile, 'a')
 
-# Assumes a standard layout
-xfeeds = range(nfeed/4) + range(2 * nfeed/4, 3 * nfeed/4)
-yfeeds = range(nfeed/4, 2 * nfeed/4) + range(3 * nfeed/4, 4 * nfeed/4)
+if args.doall == 1:
 
-xcorrs = []
-ycorrs = []
+    src_dict = {'CasA': eph.CasA, 'TauA': eph.TauA, 'CygA': eph.CygA}
+    trans_dict = {0: False, 1: True}
 
-for ii in range(nfeed/2):
-     for jj in range(ii, nfeed/2):
-          xcorrs.append(misc.feed_map(xfeeds[ii], xfeeds[jj], nfeed))
-          ycorrs.append(misc.feed_map(yfeeds[ii], yfeeds[jj], nfeed))
+    src = src_dict[name]
 
+    nfreq = args.nfreq
+    nfeed = args.nfeed
 
-corrinputs = tools.get_correlator_inputs(\
-                datetime.datetime(2015, 6, 1, 0, 0, 0), correlator='K7BP16-0004')
-
-# Now rearrange to match the correlation indices in the h5 files
-corrinput_real = psolv.rearrange_list(corrinputs, nfeeds=256)
+    corrinput_real, inpx, inpy, xcorrs, ycorrs, xfeeds, yfeeds  = psolv.gen_inp()
 
  
-"""
-This was used before I just hardcoded the list in. 
+    gx = psolv.solve_untrans(args.fn, xcorrs, xfeeds, inpx, src, transposed=trans_dict[args.trans])
+    g.create_dataset('gainsx', data=gx)
 
-R = andata.Reader(fn0)
-R.prod_sel = 0
-R.freq_sel = 305
-R.time_sel = [0, 2]
-and_obj = R.read()
-corrinput_real = rearrange_inp(and_obj, corrinputs, nfeeds=256)
-"""
+    print "================"
+    print "== Starting y =="
+    print "================"
 
-inpx = []
-inpy = []
+    gy = psolv.solve_untrans(args.fn, ycorrs, yfeeds, inpy, src, transposed=trans_dict[args.trans])
+    g.create_dataset('gainsy', data=gy)
+    g.close()
 
-for i in range(nfeed/2):
-    inpx.append(corrinput_real[xfeeds[i]])
-    inpy.append(corrinput_real[yfeeds[i]])
 
-gx = psolv.solve_untrans(fn, xcorrs, inpx, src)
-gy = psol.solve_untrans(fn, ycorrs, inpy, src)
+g = h5py.File(args.outfile, 'r')
+gx = g['gainsx'][:]
+gy = g['gainsy'][:]
 
-g = h5py.File(outfile, 'w')
-g.create_dataset('gainsx', data=gx)
-g.create_dataset('gainsy', data=gy)
-g.close()
+os.system('scp "%s:%s" "%s"' % ("gamelan", "/home/chime/ch_acq/gains_slot*pkl", "./inp_gains/") )
 
-print "Wrote down gains to: ", oufile
+print "Wrote down gains to: ", args.outfile
 
 Gains = correct_pkl.construct_gain_mat(gx, gy, 64)
 
 correct_pkl.do_it_all(Gains, args.input_pkls)
 
-
-
-
-
+os.system('scp -r "%s" chime@"%s:%s"' % ("/home/connor/code/beamforming/beamforming/outp_gains/gains_slot*pkl", "gamelan", "/home/chime/") )
 
