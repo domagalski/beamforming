@@ -14,11 +14,16 @@ gy = g['gainsy'][:]
 
 Gains = np.concatenate((gx, gy), axis=-1)
 
-gains = list(np.arange(25 * 10 * 2))
-
 def getjs(gains):
      """ Produce dictionary with gains in json 
      dumpable format
+
+     Parameters
+     ----------
+     gains : tuple
+          [[[ant0 f0 re, ant0 f0 im], 
+            [ant0 f1 re, ...], ..., 
+            [ant255 f1023 re, ant255 f1023 im]]]
      """
      return json.JSONEncoder().encode({
                          "type": "beamform_gains", 
@@ -26,7 +31,26 @@ def getjs(gains):
                          })
 
 def array_to_tuple(Gains, nfreq=1024, nfeed=256, norm=True):
+     """ Take gains array and return tuple to be written to File
 
+     Parameters
+     ----------
+     Gains : np.array
+          (nfreq, nfeed) complex128 array
+     nfreq : int
+          number of frequencies
+     nfeed : int
+          number of feeds 
+     norm : bool
+          normalize each gain to length 1
+
+     Returns
+     -------
+     tup_full : tuple
+          [[[ant0 f0 re, ant0 f0 im], 
+            [ant0 f1 re, ...], ..., 
+            [ant255 f1023 re, ant255 f1023 im]]]
+     """
      if norm is True:
           Gains /= np.abs(Gains)
 
@@ -47,11 +71,10 @@ def array_to_tuple(Gains, nfreq=1024, nfeed=256, norm=True):
 
 f = open(fn, 'w')
 
-gains = array_to_tuple(Gains, nfreq=10, nfeed=12)
+gains = array_to_tuple(Gains, nfreq=1024, nfeed=256)
 
 gain_dict = getjs(gains)
 
 f.write(gain_dict)
-#json.dump(gain_dict, f)
 
 f.close()
