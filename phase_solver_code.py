@@ -157,7 +157,7 @@ def solve_untrans(filename, corrs, feeds, inp, src, nfreq=1024, transposed=False
         ## Divides the arrays up into nfreq / nsplit freq chunks and solves those
         frq = range(i * nfreq // nsplit, (i+1) * nfreq // nsplit)
 
-        print "      %d:%d /n" % (frq[0], frq[-1])
+        print "      %d:%d \n" % (frq[0], frq[-1])
 
         # Read in time and freq slice if data has already been transposed
         if transposed is True:
@@ -224,7 +224,7 @@ def remove_fpga_gains(vis, gains, nfeed=128):
     """ Remove fpga phases
     """
 
-    print "............ Removing FPGA gains ............ /n"
+    print "............ Removing FPGA gains ............ \n"
 
     # Get gain matrix for visibilites g_i \times g_j^*
     gains_corr = gains[:, :, np.newaxis] * np.conj(gains[:, np.newaxis])
@@ -554,7 +554,7 @@ def find_transit_file(dir_nm, unix_time=None, src=None, trans=True, verbose=True
 
                 if verbose is True:
                     print flist[ii]
-                    print "%f hours away /n" % np.min(abs(time_trans - r.time)) / 3600.0
+                    print "%f hours away \n" % np.min(abs(time_trans - r.time)) / 3600.0
 
             except (KeyError, IOError):
                 print "That one didn't work"
