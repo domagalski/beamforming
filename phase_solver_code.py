@@ -16,8 +16,7 @@ import matplotlib.pyplot as plt
 def plt_gains(vis, nu, img_name='out.png', bad_chans=[]):
     fig = plt.figure(figsize=(14, 14))
     
-    # Plot up 128 feeds correlated with antenna ant
-
+    # Plot up 128 feeds correlated with antenna "ant"
     ant = 1
     angle_err = 0
     for i in range(128):
@@ -507,18 +506,18 @@ def fringestop_and_sum(fn, feeds, freq, src, transposed=True, return_unfs=False,
     print "Time range:", t_range[0], t_range[-1]
 
     data_unfs = sum_corrs(data.copy(), feeds)
-    ra_1 = eph.transit_RA(times)
+    ra_ = eph.transit_RA(times)
     ra_2 = nolan_ra(times)
 
-    ra_ = ra_2.copy()
+    #ra_ = ra_2.copy()
 
     if meridian is True:
         ra = np.ones_like(ra_) * np.degrees(src._ra)
     else:
-        ra = ra_1
+        ra = ra_
         
-    #dfs = tools.fringestop_pathfinder(data.copy(), ra, freq, inp, src)    
-    dfs = fringestop_pathfinder(data.copy(), ra_2, freq, inp, src, frick=frick)
+    dfs = tools.fringestop_pathfinder(data.copy(), ra, freq, inp, src)    
+    #dfs = fringestop_pathfinder(data.copy(), ra_2, freq, inp, src, frick=frick)
 #    dfs = fringestop_pathfinder(data.copy(), ra_1, freq, inp, src, frick=frick)
 
 #    fp = np.loadtxt('/home/connor/feed_layout_decrease.txt')
