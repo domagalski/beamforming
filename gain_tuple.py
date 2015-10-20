@@ -1,5 +1,7 @@
 import sys
 
+import h5py
+import numpy as np
 import json
 
 fn = sys.argv[1]
