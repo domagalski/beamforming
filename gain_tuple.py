@@ -7,8 +7,10 @@ import json
 gn = sys.argv[1]
 fn = sys.argv[2]
 
-gx = f['gainsx'][:]
-gy = f['gainsy'][:]
+g = h5py.File(gn,'r')
+
+gx = g['gainsx'][:]
+gy = g['gainsy'][:]
 
 Gains = np.concatenate((gx, gy), axis=-1)
 
