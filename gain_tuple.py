@@ -51,6 +51,7 @@ gains = array_to_tuple(Gains, nfreq=10, nfeed=12)
 
 gain_dict = getjs(gains)
 
-json.dump(gain_dict, f)
+f.write(gain_dict)
+#json.dump(gain_dict, f)
 
 f.close()
