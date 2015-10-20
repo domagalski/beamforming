@@ -4,7 +4,14 @@ import h5py
 import numpy as np
 import json
 
-fn = sys.argv[1]
+gn = sys.argv[1]
+fn = sys.argv[2]
+
+gx = f['gainsx'][:]
+gy = f['gainsy'][:]
+
+Gains = np.concatenate((gx, gy), axis=-1)
+
 gains = list(np.arange(25 * 10 * 2))
 
 def getjs(gains):
