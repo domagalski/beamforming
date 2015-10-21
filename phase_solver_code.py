@@ -479,11 +479,11 @@ def fringestop_pathfinder(timestream, ra, freq, feeds, src, frick=None):
 
 
 def fringestop_and_sum(fn, feeds, freq, src, transposed=True, 
-            return_unfs=False, meridian=False, del_t=750, frick=None):             
+            return_unfs=False, meridian=False, del_t=1500, frick=None):             
     """ Take an input file fn and a set of feeds and return 
     a formed beam on src. 
     """
-    
+
     if transposed is True:
         r = andata.Reader(fn)
         r.freq_sel = freq
@@ -493,12 +493,20 @@ def fringestop_and_sum(fn, feeds, freq, src, transposed=True,
         f = h5py.File(fn, 'r')  
         times = f['index_map']['time'].value['ctime']
 
-    print "Read it, bruh"
+    print "Read in data"
 
     # Get transit time for source 
     src_trans = eph.transit_times(src, times[0]) 
 
-    # Select +-100 seconds of transit                                                                                                                    
+    
+    # try to account for differential arrival time from cylinder rotation. 
+    del_phi = (src._dec - np.radians(eph.CHIMELATITUDE)) * np.sin(np.radians(1.988))
+    del_phi *= (24 * 3600.0) / (2 * np.pi)
+
+    # Adjust the transit time accordingly
+    src_trans += del_phi
+
+    # Select +- del_t of transit, accounting for the mispointing 
     t_range = np.where((times < src_trans + del_t) & (times > src_trans - del_t))[0]
 
     # Generate correctly ordered corrinputs
