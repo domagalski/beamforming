@@ -230,12 +230,13 @@ def check_gain_solution(infile_pkl, infile_h5, feeds, src, freq=305, transposed=
          g = f['gain_coeff'][0, freq]
          Gh5 = g['r'] + 1j * g['i']
     
-    for i in range(len(feeds)):
-         for j in range(i, len(feeds)):
-              dfs[:, misc.feed_map(i, j, 256)] *= np.exp(-1j * np.angle(Gh5[i] * np.conj(Gh5[j])))
+#    for i in range(len(feeds)):
+#         for j in range(i, len(feeds)):
+#              dfs[:, misc.feed_map(i, j, 256)] *= np.exp(-1j * np.angle(Gh5[i] * np.conj(Gh5[j])))
               #dfs[:, misc.feed_map(i, j, 256)] *= np.exp(1j * np.angle(Gpkl[i] * np.conj(Gpkl[j])))
 
     return dfs, Gh5
+
 """
 def check_gain_solution(infile_pkl, infile_h5, freq=305, transposed=True):
     Gpkl = gain_pkl_mat(infile_pkl)
