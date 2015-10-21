@@ -196,7 +196,7 @@ def solve_untrans(filename, corrs, feeds, inp, src, nfreq=1024, transposed=False
         baddies = np.where(np.isnan(tools.get_feed_positions(inp)[:, 0]))[0]
 
         # Fringestop to location of "src"
-        data_fs = tools.fringestop_pathfinder(vis, eph.transit_RA(times), freq_MHZ, inp, src)
+        data_fs = vis#tools.fringestop_pathfinder(vis, eph.transit_RA(times), freq_MHZ, inp, src)
 
         del vis
 
@@ -478,10 +478,12 @@ def fringestop_pathfinder(timestream, ra, freq, feeds, src, frick=None):
     return timestream * fs_phase
 
 
-def fringestop_and_sum(fn, feeds, freq, src, transposed=True, return_unfs=False, meridian=False, del_t=750, frick=None):             
+def fringestop_and_sum(fn, feeds, freq, src, transposed=True, 
+            return_unfs=False, meridian=False, del_t=750, frick=None):             
     """ Take an input file fn and a set of feeds and return 
     a formed beam on src. 
     """
+    
     if transposed is True:
         r = andata.Reader(fn)
         r.freq_sel = freq
