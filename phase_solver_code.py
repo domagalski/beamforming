@@ -95,7 +95,6 @@ def solve_gain(data, feeds=None):
 
     dr[dr != dr] = 0.0
 
-
     print "Dynamic range max: %f" % dr.max()
 
     return dr, gain
@@ -117,8 +116,8 @@ def read_data(reader_obj, src, prod_sel, freq_sel=None, del_t=50):
 
     return and_obj
 
-def solve_untrans(filename, corrs, feeds, inp, src, nfreq=1024, transposed=False):
-    del_t = 350
+def solve_untrans(filename, corrs, feeds, inp, src, nfreq=1024, transposed=False, nfeed=128):
+    del_t = 1500
 
     f = h5py.File(filename, 'r')
 
@@ -142,16 +141,13 @@ def solve_untrans(filename, corrs, feeds, inp, src, nfreq=1024, transposed=False
 
     assert (len(t_range) > 0), "Source is not in this acq"
 
-    times = times[t_range[0]:t_range[-1]:2]
-
-#    Gains = np.zeros([nfreq, 128, len(times)], np.complex128)
-    Gains = np.zeros([nfreq, 128], np.complex128)
+    Gains = np.zeros([nfreq, nfeed], np.complex128)
     
     print "Starting the solver"
     
     nsplit = 32
 
-    for i in range(nsplit):
+    for i in range(9, 10):#nsplit):
         
         ## Divides the arrays up into nfreq / nsplit freq chunks and solves those
         frq = range(i * nfreq // nsplit, (i+1) * nfreq // nsplit)
@@ -159,16 +155,22 @@ def solve_untrans(filename, corrs, feeds, inp, src, nfreq=1024, transposed=False
         print "      %d:%d \n" % (frq[0], frq[-1])
 
         # Read in time and freq slice if data has already been transposed
+
         if transposed is True:
             v = f['vis'][frq[0]:frq[-1]+1, corrs, :]
-            v = v[..., t_range[0]:t_range[-1]:2]
+            v = v[..., t_range[0]:t_range[-1]]
             vis = v['r'] + 1j * v['i']
+
+            autos = auto_corrs(nfeed)
+            offp = (abs(vis[:, autos, 0::2]).mean() > (abs(vis[:, autos, 1::2]).mean())).astype(int)
+
+            vis = vis[..., offp::2]
             
             gg = f['gain_coeff'][frq[0]:frq[-1]+1, feeds, 0]
             gain_coeff = (gg['r'] + 1j * gg['i'])
 
             del gg
-
+            
         # Read in time and freq slice if data has not yet been transposed
         if transposed is False:
             v = f['vis'][t_range[0]:t_range[-1]:2, frq[0]:frq[-1]+1, corrs]
@@ -180,12 +182,14 @@ def solve_untrans(filename, corrs, feeds, inp, src, nfreq=1024, transposed=False
             del v
 
             vis = np.transpose(vis, (1, 2, 0))
-            
+        
+        times = times[t_range[0]:t_range[-1]][offp::2]
+
         # Remove fpga gains from data
-        vis = remove_fpga_gains(vis, gain_coeff, nfeed=128)
+#        vis = remove_fpga_gains(vis, gain_coeff, nfeed=nfeed)
 
         # Remove offset from galaxy
-        vis -= 0.5 * (vis[..., 0] + vis[..., -1])[..., np.newaxis]
+        #vis -= 0.5 * (vis[..., 0] + vis[..., -1])[..., np.newaxis]
    
         freq_MHZ = 800.0 - np.array(frq) / 1024.0 * 400.
     
@@ -214,6 +218,11 @@ def solve_untrans(filename, corrs, feeds, inp, src, nfreq=1024, transposed=False
             plt_gains(dfs_corr, 0, img_name='./phs_plots/dfs_corrmeanflah' + np.str(frq[0]) + '.png', bad_chans=baddies)
 
             del dfs_corr
+
+        lol = h5py.File('./this.hdf5','w')
+        lol.create_dataset('dfs', data=data_fs)
+        lol.create_dataset('g', data=Gains)
+        lol.close()
 
         del data_fs, a
 
@@ -249,7 +258,7 @@ def correct_dfs(dfs, Gains, nfeed=256):
     for i in range(nfeed):
         for j in range(i, nfeed):
             #dfs_corrm[:, misc.feed_map(i, j, 128)] *= np.conj(Gains[:, i] * np.conj(Gains[:, j]))
-            dfs_corrm[:, misc.feed_map(i, j, 128)] *= np.exp(-1j * (Gains[:, i] - np.conj(Gains[:, j])))
+            dfs_corrm[:, misc.feed_map(i, j, 128)] *= np.exp(-1j * (Gains[:, i]*np.conj(Gains[:, j])))
             
     return dfs_corrm
 
@@ -325,6 +334,14 @@ def gen_inp(nfeed=256):
         inpy.append(corrinput_real[yfeeds[i]])
 
     return corrinput_real, inpx, inpy, xcorrs, ycorrs, xfeeds, yfeeds
+
+def auto_corrs(nfeed):
+    autos = []
+
+    for ii in range(nfeed):
+        autos.append(misc.feed_map(ii, ii, nfeed))
+
+    return autos
 
 def select_corrs(feeds, nfeed=256):
     autos = []
@@ -501,7 +518,6 @@ def fringestop_and_sum(fn, feeds, freq, src, transposed=True, return_unfs=False,
         freq = np.array([freq])
 
     times = times[t_range[0]:t_range[-1]]
-#    data -= (data[..., 0] + data[..., -1])[..., np.newaxis] / 2.0
 
     print "Time range:", t_range[0], t_range[-1]
 
