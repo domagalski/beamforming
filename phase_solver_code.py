@@ -96,6 +96,7 @@ def solve_gain(data, feeds=None):
     dr[dr != dr] = 0.0
 
     print "Dynamic range max: %f" % dr.max()
+    print dr[0]
 
     return dr, gain
 
@@ -117,12 +118,12 @@ def read_data(reader_obj, src, prod_sel, freq_sel=None, del_t=50):
     return and_obj
 
 def solve_untrans(filename, corrs, feeds, inp, src, nfreq=1024, transposed=False, nfeed=128):
-    del_t = 1500
+    del_t = 600
 
     f = h5py.File(filename, 'r')
 
     times = f['index_map']['time'].value['ctime']
-    
+    print len(times), eph.transit_RA(times)
     src_trans = eph.transit_times(src, times[0])
     
     # try to account for differential arrival time from 
@@ -146,16 +147,17 @@ def solve_untrans(filename, corrs, feeds, inp, src, nfreq=1024, transposed=False
     print "Starting the solver"
     
     nsplit = 32
-
-    for i in range(9, 10):#nsplit):
-        
+    times = times[t_range[0]:t_range[-1]]
+    
+    k=0
+    for i in range(nsplit):
+        k+=1
         ## Divides the arrays up into nfreq / nsplit freq chunks and solves those
         frq = range(i * nfreq // nsplit, (i+1) * nfreq // nsplit)
-
+        
         print "      %d:%d \n" % (frq[0], frq[-1])
 
         # Read in time and freq slice if data has already been transposed
-
         if transposed is True:
             v = f['vis'][frq[0]:frq[-1]+1, corrs, :]
             v = v[..., t_range[0]:t_range[-1]]
@@ -165,7 +167,7 @@ def solve_untrans(filename, corrs, feeds, inp, src, nfreq=1024, transposed=False
             offp = (abs(vis[:, autos, 0::2]).mean() > (abs(vis[:, autos, 1::2]).mean())).astype(int)
 
             vis = vis[..., offp::2]
-            
+
             gg = f['gain_coeff'][frq[0]:frq[-1]+1, feeds, 0]
             gain_coeff = (gg['r'] + 1j * gg['i'])
 
@@ -183,20 +185,19 @@ def solve_untrans(filename, corrs, feeds, inp, src, nfreq=1024, transposed=False
 
             vis = np.transpose(vis, (1, 2, 0))
         
-        times = times[t_range[0]:t_range[-1]][offp::2]
-
+        if k==1: times = times[offp::2]
         # Remove fpga gains from data
-#        vis = remove_fpga_gains(vis, gain_coeff, nfeed=nfeed)
+        vis = remove_fpga_gains(vis, gain_coeff, nfeed=nfeed)
 
         # Remove offset from galaxy
-        #vis -= 0.5 * (vis[..., 0] + vis[..., -1])[..., np.newaxis]
+        vis -= 0.5 * (vis[..., 0] + vis[..., -1])[..., np.newaxis]
    
         freq_MHZ = 800.0 - np.array(frq) / 1024.0 * 400.
     
         baddies = np.where(np.isnan(tools.get_feed_positions(inp)[:, 0]))[0]
 
         # Fringestop to location of "src"
-        data_fs = vis#tools.fringestop_pathfinder(vis, eph.transit_RA(times), freq_MHZ, inp, src)
+        data_fs = tools.fringestop_pathfinder(vis, eph.transit_RA(times), freq_MHZ, inp, src)
 
         del vis
 
@@ -206,27 +207,79 @@ def solve_untrans(filename, corrs, feeds, inp, src, nfreq=1024, transposed=False
 
         Gains[frq] = a[..., trans_pix-2:trans_pix+2].mean(-1)
 
+
         # Plot up post-fs phases to see if everything has been fixed
-        if frq[0] == 14 * nsplit:
+        if frq[0] == 9 * nsplit:
             print "======================"
             print "   Plotting up freq: %d" % frq[0]
             print "======================"
 
-            plt_gains(data_fs, 0, img_name='./phs_plots/dfs' + np.str(frq[0]) + '.png', bad_chans=baddies)
-#            dfs_corr = correct_dfs(data_fs, Gains[frq].mean(-1)[..., np.newaxis], nfeed=128)
+            plt_gains(data_fs, 0, img_name='./phs_plots/dfs' + np.str(frq[17]) + '.png', bad_chans=baddies)
             dfs_corr = correct_dfs(data_fs, np.angle(Gains[frq])[..., np.newaxis], nfeed=128)
-            plt_gains(dfs_corr, 0, img_name='./phs_plots/dfs_corrmeanflah' + np.str(frq[0]) + '.png', bad_chans=baddies)
+            plt_gains(dfs_corr, 0, img_name='./phs_plots/dfs_corrmeanflah' + np.str(frq[17]) + '.png', bad_chans=baddies)
 
             del dfs_corr
-
-        lol = h5py.File('./this.hdf5','w')
-        lol.create_dataset('dfs', data=data_fs)
-        lol.create_dataset('g', data=Gains)
-        lol.close()
 
         del data_fs, a
 
     return Gains
+
+def fs_from_file(filename, frq, src, nfreq=1024, del_t=900, transposed=True):
+
+    f = h5py.File(filename, 'r')
+
+    times = f['index_map']['time'].value['ctime'] + 10.6
+
+    src_trans = eph.transit_times(src, times[0])
+
+    # try to account for differential arrival time from cylinder rotation. 
+
+    del_phi = (src._dec - np.radians(eph.CHIMELATITUDE)) * np.sin(np.radians(1.988))
+    del_phi *= (24 * 3600.0) / (2 * np.pi)
+
+    # Adjust the transit time accordingly                                                                                             
+    src_trans += del_phi
+
+    # Select +- del_t of transit, accounting for the mispointing                                                                      
+    t_range = np.where((times < src_trans + del_t) & (times > src_trans - del_t))[0]
+
+    times = times[t_range[0]:t_range[-1]]#[offp::2] test
+
+    print "Time range:", times[0], times[-1]
+
+    print "\n...... This data is from %s starting at RA: %f ...... \n" \
+        % (eph.unix_to_datetime(times[0]), eph.transit_RA(times[0]))
+
+#    times = times[t_range[0]:t_range[-1]]
+
+    if transposed is True:
+        v = f['vis'][frq[0]:frq[-1]+1, :]
+        v = v[..., t_range[0]:t_range[-1]]
+        vis = v['r'] + 1j * v['i']
+
+
+     # Read in time and freq slice if data has not yet been transposed
+    if transposed is False:
+         v = f['vis'][t_range[0]:t_range[-1]:2, frq[0]:frq[-1]+1, :]
+         vis = v['r'][:] + 1j * v['i'][:]
+         del v
+
+         vis = np.transpose(vis, (1, 2, 0))
+
+    inp = gen_inp()[0]
+    # Remove offset from galaxy                                                                                                                                                                                 
+    #vis -= 0.5 * (vis[..., 0] + vis[..., -1])[..., np.newaxis]
+
+    freq_MHZ = 800.0 - np.array(frq) / 1024.0 * 400.
+    print len(inp)
+
+    baddies = np.where(np.isnan(tools.get_feed_positions(inp)[:, 0]))[0]
+
+    # Fringestop to location of "src"                                                                                                                                                                        
+    data_fs = tools.fringestop_pathfinder(vis, eph.transit_RA(times), freq_MHZ, inp, src)
+
+
+    return data_fs
 
 def remove_fpga_gains(vis, gains, nfeed=128):
     """ Remove fpga phases
@@ -235,19 +288,27 @@ def remove_fpga_gains(vis, gains, nfeed=128):
     print "............ Removing FPGA gains ............ \n"
 
     # Get gain matrix for visibilites g_i \times g_j^*
-    gains_corr = gains[:, :, np.newaxis] * np.conj(gains[:, np.newaxis])
+    #gains_corr = gains[:, :, np.newaxis] * np.conj(gains[:, np.newaxis])
     
     # Take only upper triangle of gain matrix
-    ind = np.triu_indices(nfeed)
+    #ind = np.triu_indices(nfeed)
     
-    gains_mat = np.zeros([vis.shape[0], len(ind[0])], dtype=gains.dtype)
+    #gains_mat = np.zeros([vis.shape[0], len(ind[0])], dtype=gains.dtype)
 
     for nu in range(vis.shape[0]):
-        gains_mat[nu] = gains_corr[nu][ind]
-        
-    phase = np.angle(gains_mat)[..., np.newaxis]
+        for i in range(nfeed):
+            for j in range(i, nfeed):
+                phi = np.angle(gains[nu, i] * np.conj(gains[nu, j]))
+                vis[nu, misc.feed_map(i, j, nfeed)] *= np.exp(-1j * phi)
+    
+    return vis
 
-    return vis * np.exp(-1j * phase)
+#    for nu in range(vis.shape[0]):
+#        gains_mat[nu] = gains_corr[nu][ind]
+        
+#    phase = np.angle(gains_mat)[..., np.newaxis]
+
+#    return vis * np.exp(-1j * phase)
     
 def correct_dfs(dfs, Gains, nfeed=256):
     """ Corrects fringestopped visibilities
@@ -258,7 +319,7 @@ def correct_dfs(dfs, Gains, nfeed=256):
     for i in range(nfeed):
         for j in range(i, nfeed):
             #dfs_corrm[:, misc.feed_map(i, j, 128)] *= np.conj(Gains[:, i] * np.conj(Gains[:, j]))
-            dfs_corrm[:, misc.feed_map(i, j, 128)] *= np.exp(-1j * (Gains[:, i]*np.conj(Gains[:, j])))
+            dfs_corrm[:, misc.feed_map(i, j, 128)] *= np.exp(-1j * (Gains[:, i] - Gains[:, j])) 
             
     return dfs_corrm
 
@@ -369,11 +430,11 @@ def fill_nolan(times, ra, dec, feed_positions):
 
     PH = np.zeros([1, 32896, nt])
 
-
     for tt in range(len(times)):
         pht = nolan_phases(times[tt], ra, dec, feed_positions)
 
-        PH[0, :, tt] = (pht.repeat(na).reshape(-1, na) - (pht.repeat(na).reshape(-1, na)).transpose())[np.triu_indices(256)]
+        PH[0, :, tt] = (pht.repeat(na).reshape(-1, na)\
+             - (pht.repeat(na).reshape(-1, na)).transpose())[np.triu_indices(256)]
 
     return PH
 
@@ -389,7 +450,13 @@ def nolan_ra(unix_time):
     inst_lat = 49.3203
 
     j2000_unix = 946728000
-    lst = phi_0 + inst_long + lst_rate*(unix_time - j2000_unix)
+    
+    # This function disagrees with Kiyo's ephemeris.transit_RA
+    # since Nolan does not account for precession/nutation. This offset
+    # should take care of that.
+    precession_offset = (unix_time - j2000_unix) * 0.012791 / (365 * 24 * 3600) 
+
+    lst = phi_0 + inst_long + lst_rate*(unix_time - j2000_unix) - precession_offset
     lst = np.fmod(lst, 360)
 
     return lst
@@ -479,7 +546,7 @@ def fringestop_pathfinder(timestream, ra, freq, feeds, src, frick=None):
 
 
 def fringestop_and_sum(fn, feeds, freq, src, transposed=True, 
-            return_unfs=False, meridian=False, del_t=1500, frick=None):             
+            return_unfs=True, meridian=False, del_t=1500, frick=None):             
     """ Take an input file fn and a set of feeds and return 
     a formed beam on src. 
     """
@@ -498,17 +565,19 @@ def fringestop_and_sum(fn, feeds, freq, src, transposed=True,
     # Get transit time for source 
     src_trans = eph.transit_times(src, times[0]) 
 
-    
-    # try to account for differential arrival time from cylinder rotation. 
     del_phi = (src._dec - np.radians(eph.CHIMELATITUDE)) * np.sin(np.radians(1.988))
     del_phi *= (24 * 3600.0) / (2 * np.pi)
 
-    # Adjust the transit time accordingly
+    # Adjust the transit time accordingly                                                                                                            
     src_trans += del_phi
 
-    # Select +- del_t of transit, accounting for the mispointing 
+    # Select +- del_t of transit, accounting for the mispointing                                                                                     
     t_range = np.where((times < src_trans + del_t) & (times > src_trans - del_t))[0]
 
+    times = times[t_range[0]:t_range[-1]]#[offp::2] test
+
+    print "Time range:", times[0], times[-1]
+    
     # Generate correctly ordered corrinputs
     corrinput_real = gen_inp()[0]
     inp = np.array(corrinput_real)
@@ -527,9 +596,9 @@ def fringestop_and_sum(fn, feeds, freq, src, transposed=True,
         freq = 800 - 400.0 / 1024 * freq
         freq = np.array([freq])
 
-    times = times[t_range[0]:t_range[-1]]
-
-    print "Time range:", t_range[0], t_range[-1]
+#    autos = auto_corrs(256)
+#    offp = (abs(data[:, autos, 0::2]).mean() > (abs(data[:, autos, 1::2]).mean())).astype(int)
+#    data = data[..., offp::2] test
 
     data_unfs = sum_corrs(data.copy(), feeds)
     ra_ = eph.transit_RA(times)
@@ -541,7 +610,8 @@ def fringestop_and_sum(fn, feeds, freq, src, transposed=True,
         ra = np.ones_like(ra_) * np.degrees(src._ra)
     else:
         ra = ra_
-        
+
+    print len(inp)
     dfs = tools.fringestop_pathfinder(data.copy(), ra, freq, inp, src)    
     #dfs = fringestop_pathfinder(data.copy(), ra_2, freq, inp, src, frick=frick)
 #    dfs = fringestop_pathfinder(data.copy(), ra_1, freq, inp, src, frick=frick)
