@@ -6,6 +6,7 @@ import pickle
 import misc_data_io as misc
 import ch_util.ephemeris as eph
 import phase_solver_code as pc
+reload(pc)
 
 slot = np.array([4, 2, 16, 14, 3, 1, 15, 13, 8, 6, 12, 10, 7, 5, 11, 9])
 slot_id = slot.repeat(16)
@@ -157,7 +158,6 @@ def construct_gain_mat(gx, gy, nch, nfreq=1024, nfeed=256):
 
      for nu in range(nch):
 
-          print range(nf * nu, nf*(nu+1))
 
           gain_mat[nf*nu:nf*(nu+1), :64] = gx[nf*nu:nf*(nu+1), :64]#.mean(-1)
           gain_mat[nf*nu:nf*(nu+1), 128:128+64] = gx[nf*nu:nf*(nu+1), 64:]#.mean(-1)
@@ -165,7 +165,6 @@ def construct_gain_mat(gx, gy, nch, nfreq=1024, nfeed=256):
           gain_mat[nf*nu:nf*(nu+1), 64:128] = gy[nf*nu:nf*(nu+1), :64]#.mean(-1)
           gain_mat[nf*nu:nf*(nu+1), 128+64:] = gy[nf*nu:nf*(nu+1), 64:]#.mean(-1)
 
-          print nu
 
      return gain_mat
 
@@ -211,18 +210,17 @@ def check_gain_solution(infile_pkl, infile_h5, feeds, src, freq=305, transposed=
 
     dfs = pc.fringestop_and_sum(infile_h5, feeds,
                    freq, src, transposed=transposed,
-                                return_unfs=True, del_t=2800, meridian=False)[-2]
+                                return_unfs=True, meridian=False)[-2]
 
     dfs = dfs[0].transpose()
     ntimes = dfs.shape[0]
 
     print dfs.shape
 
-    Gpkl = gain_pkl_mat('./inp_gains/gains_slot')
-    Gpkl = Gpkl[freq]
+#    Gpkl = gain_pkl_mat('./inp_gains/gains_slot')
+#    Gpkl = Gpkl[freq]
 
     f = h5py.File(infile_h5, 'r')                                                                                              
-    
     if transposed is True:
          g = f['gain_coeff'][freq, :, 0]
          Gh5 = g['r'] + 1j * g['i']
