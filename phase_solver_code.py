@@ -7,6 +7,7 @@ import glob
 
 import misc_data_io as misc
 from ch_util import andata, ephemeris as eph, tools
+import correct_pkl as cp
 
 import matplotlib
 matplotlib.use('Agg')    
@@ -123,7 +124,6 @@ def solve_untrans(filename, corrs, feeds, inp, src, nfreq=1024, transposed=False
     f = h5py.File(filename, 'r')
 
     times = f['index_map']['time'].value['ctime']
-    print len(times), eph.transit_RA(times)
     src_trans = eph.transit_times(src, times[0])
     
     # try to account for differential arrival time from 
@@ -224,7 +224,8 @@ def solve_untrans(filename, corrs, feeds, inp, src, nfreq=1024, transposed=False
 
     return Gains
 
-def fs_from_file(filename, frq, src, nfreq=1024, del_t=900, transposed=True):
+def fs_from_file(filename, frq, src, nfreq=1024, 
+                 del_t=900, transposed=True, subtract_avg=False):
 
     f = h5py.File(filename, 'r')
 
@@ -268,18 +269,63 @@ def fs_from_file(filename, frq, src, nfreq=1024, del_t=900, transposed=True):
 
     inp = gen_inp()[0]
     # Remove offset from galaxy                                                                                                                                                                                 
-    #vis -= 0.5 * (vis[..., 0] + vis[..., -1])[..., np.newaxis]
+    if subtract_avg is True:
+        vis -= 0.5 * (vis[..., 0] + vis[..., -1])[..., np.newaxis]
 
     freq_MHZ = 800.0 - np.array(frq) / 1024.0 * 400.
     print len(inp)
 
     baddies = np.where(np.isnan(tools.get_feed_positions(inp)[:, 0]))[0]
 
-    # Fringestop to location of "src"                                                                                                                                                                        
+    # Fringestop to location of "src"
     data_fs = tools.fringestop_pathfinder(vis, eph.transit_RA(times), freq_MHZ, inp, src)
 
 
     return data_fs
+
+def fs_and_correct_gains(fn_h5, fn_gain, src, freq=305, \
+                              del_t = 900, transposed=True, remove_fpga=True, remove_instr=True):
+
+#    dfs = pc.fringestop_and_sum(fn_h5, [1, 2],
+#                   freq, src, transposed=transposed,
+#                                return_unfs=True, meridian=False)[-2]
+
+    dfs = pc.fs_from_file(fn_h5, [freq], eph.CasA, del_t=1800)
+
+#    dfs = dfs[0].transpose()
+    ntimes = dfs.shape[0]
+
+    fg = h5py.File(fn_gain, 'r')
+
+    gx = fg['gainsx']
+    gy = fg['gainsy']
+
+    gain_mat = construct_gain_mat(gx, gy, 64)[freq]
+
+    f = h5py.File(fn_h5, 'r')
+    feeds = range(256)
+
+    if transposed is True:
+         g = f['gain_coeff'][freq, :, 0]
+         Gh5 = g['r'] + 1j * g['i']
+    else:
+         g = f['gain_coeff'][0, freq]
+         Gh5 = g['r'] + 1j * g['i']
+    
+    for i in range(len(feeds)):
+
+         for j in range(i, len(feeds)):
+              if remove_fpga is True:
+                   # Remove fpga phases written in .h5 file
+                   dfs[:, misc.feed_map(i, j, 256)] *= np.exp(-1j * np.angle(Gh5[i] * np.conj(Gh5[j])))
+
+              if remove_instr is True:
+                   # Apply gains solved for 
+                   dfs[:, misc.feed_map(i, j, 256)] *= np.exp(-1j * np.angle(gain_mat[i] * np.conj(gain_mat[j])))
+    
+    return dfs, Gh5
+
+
 
 def remove_fpga_gains(vis, gains, nfeed=128):
     """ Remove fpga phases
@@ -672,6 +718,56 @@ def find_transit_file(dir_nm, unix_time=None, src=None, trans=True, verbose=True
 
     return flist[np.argmin(tdel)], tdel.min()
     
+def noise_src_phase(fn_ns_sol, fn_sky_sol, src=eph.CasA, trb=10):
+    """ Get noise source phase at the time sky solution was calculated
+    (e.g. time of CasA transit) and use that as baseline.
+
+    Parameters
+    ----------
+    fn_ns_sol : np.str
+       file name with noise source solution
+    fn_sky_sol : np.str
+       file name with sky solution
+    src : ephemeris.Object
+       object that gave sky solution in fn_sky_sol
+    tbr : np.int
+       time rebin factor
+
+    Returns
+    -------
+    phase solution : array_like
+       (nfeed, nt) real array of phases
+   
+    """
+
+    f = h5py.File(fn_ns_sol, 'r')
+    fsky = h5py.File(fn_sky_sol, 'r')
+
+    gx = fsky['gainsx'][:]
+    gy = fsky['gainsy'][:]
+
+    gains_ns = f['gains'][:]
+
+    feeds = f['channels'][:]
+    freq = f['freq_bins'][:]
+    toff = f['timestamp_off']
+
+    nt = len(toff)
+    nfeed = len(feeds)
+    nfreq = len(freq)
+    
+    toff = toff[::10]
+
+    gains_sky = cp.construct_gain_mat(gx, gy, 64)
+    gains_sky = gains_sky[freq, feeds]
+
+    gains_ns = gains_ns[..., :nt // trb * trb].reshape(nfreq, nfeed, -1, trb).mean(-1)
+    src_trans = eph.transit_times(src, toff[0])
+
+    trans_pix = np.argmin(abs(src_trans - toff))
+    phase = np.angle(gains_ns) - np.angle(gains_ns[..., trans_pix, np.newaxis])
+
+    return np.angle(gains_sky)[:, np.newaxis] + phase 
 
 
 flist = [48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 
