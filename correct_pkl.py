@@ -215,12 +215,11 @@ def check_gain_solution(infile_pkl, infile_h5, feeds, src, freq=305, transposed=
     dfs = dfs[0].transpose()
     ntimes = dfs.shape[0]
 
-    print dfs.shape
-
 #    Gpkl = gain_pkl_mat('./inp_gains/gains_slot')
 #    Gpkl = Gpkl[freq]
 
     f = h5py.File(infile_h5, 'r')                                                                                              
+
     if transposed is True:
          g = f['gain_coeff'][freq, :, 0]
          Gh5 = g['r'] + 1j * g['i']
@@ -233,6 +232,48 @@ def check_gain_solution(infile_pkl, infile_h5, feeds, src, freq=305, transposed=
 #              dfs[:, misc.feed_map(i, j, 256)] *= np.exp(-1j * np.angle(Gh5[i] * np.conj(Gh5[j])))
               #dfs[:, misc.feed_map(i, j, 256)] *= np.exp(1j * np.angle(Gpkl[i] * np.conj(Gpkl[j])))
 
+    return dfs, Gh5
+
+def fs_and_correct_gains(fn_h5, fn_gain, src, freq=305, \
+                              del_t = 900, transposed=True, remove_fpga=True, remove_instr=True):
+
+#    dfs = pc.fringestop_and_sum(fn_h5, [1, 2],
+#                   freq, src, transposed=transposed,
+#                                return_unfs=True, meridian=False)[-2]
+
+    dfs = pc.fs_from_file(fn_h5, [freq], eph.CasA, del_t=1800)
+
+#    dfs = dfs[0].transpose()
+    ntimes = dfs.shape[0]
+
+    fg = h5py.File(fn_gain, 'r')
+
+    gx = fg['gainsx']
+    gy = fg['gainsy']
+
+    gain_mat = construct_gain_mat(gx, gy, 64)[freq]
+
+    f = h5py.File(fn_h5, 'r')
+    feeds = range(256)
+
+    if transposed is True:
+         g = f['gain_coeff'][freq, :, 0]
+         Gh5 = g['r'] + 1j * g['i']
+    else:
+         g = f['gain_coeff'][0, freq]
+         Gh5 = g['r'] + 1j * g['i']
+    
+    for i in range(len(feeds)):
+
+         for j in range(i, len(feeds)):
+              if remove_fpga is True:
+                   # Remove fpga phases written in .h5 file
+                   dfs[:, misc.feed_map(i, j, 256)] *= np.exp(-1j * np.angle(Gh5[i] * np.conj(Gh5[j])))
+
+              if remove_instr is True:
+                   # Apply gains solved for 
+                   dfs[:, misc.feed_map(i, j, 256)] *= np.exp(-1j * np.angle(gain_mat[i] * np.conj(gain_mat[j])))
+    
     return dfs, Gh5
 
 """

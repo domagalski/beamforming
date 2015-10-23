@@ -4,8 +4,9 @@ import numpy as np
 
 class ReadBeamform:
 
-     def __init__(self, pmin=0, pmax=1000):
-          self.pmax = pmax # Quick fix. Effectively no upper limit.
+     def __init__(self, pmin=0, pmax=1e7):
+          # Dumb way of including upper/lower limit to packet number
+          self.pmax = pmax 
           self.pmin = pmin
           self.nfr = 8 # Number of links 
           self.npol = 2
