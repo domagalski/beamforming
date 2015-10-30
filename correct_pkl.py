@@ -77,19 +77,27 @@ def write_pkl(fnout, data):
      output.close()
 
 def phase_mult_remove_original_phase(data_pkl, phase, inp):
-     
+
+     phase[np.isnan(phase)] = 0.0
+     # Force the pkl carrier to be purely Real
+
      data_pkl[inp][1][0] *= np.exp(-1j * np.angle(data_pkl[inp][1][0]))
+     
+     # Now remove instrumental phase from carrier pkl 
      data_pkl[inp][1][0] *= np.exp(-1j * phase)
      data_pkl[inp][1][0] = np.round(data_pkl[inp][1][0].real)\
          + 1j * np.round(data_pkl[inp][1][0].imag)
 
-     assert abs(data_pkl[inp][1][0].real).all() < 32768
+     assert abs(data_pkl[inp][1][0].real).all() < 32767
+     assert abs(data_pkl[inp][1][0].imag).all() < 32767
 
      return list(data_pkl[inp][1][0])
 
 def phase_mult(data_pkl, phase, inp):
      
      data_pkl[inp][1][0] *= np.exp(-1j * phase)
+
+     # Seems to have been changed from -phi to +phi already
      data_pkl[inp][1][0] = np.round(data_pkl[inp][1][0].real)\
          + 1j * np.round(data_pkl[inp][1][0].imag)
 
@@ -196,11 +204,6 @@ def gain_pkl_mat(infile):
           feeds = np.where(slot_id==x)[0]#[::-1]                                                           
           feeds = feeds[ch_map]
           
-          print "--------------"
-          print feeds
-          print fpga_name
-          print "--------------"
-
           for i in range(16):
                GGpkl[:, feeds[i]] = data_pkl[i][1][0]
 
@@ -243,7 +246,6 @@ def fs_and_correct_gains(fn_h5, fn_gain, src, freq=305, \
 
     dfs = pc.fs_from_file(fn_h5, [freq], eph.CasA, del_t=1800)
 
-#    dfs = dfs[0].transpose()
     ntimes = dfs.shape[0]
 
     fg = h5py.File(fn_gain, 'r')
@@ -256,6 +258,10 @@ def fs_and_correct_gains(fn_h5, fn_gain, src, freq=305, \
     f = h5py.File(fn_h5, 'r')
     feeds = range(256)
 
+    # Skip loading the gains and applying them if both are False
+    if (remove_fpga is False) and (remove_instr is False):
+         return dfs
+
     if transposed is True:
          g = f['gain_coeff'][freq, :, 0]
          Gh5 = g['r'] + 1j * g['i']
@@ -263,18 +269,25 @@ def fs_and_correct_gains(fn_h5, fn_gain, src, freq=305, \
          g = f['gain_coeff'][0, freq]
          Gh5 = g['r'] + 1j * g['i']
     
+    print "doing the big loop"
+
     for i in range(len(feeds)):
 
          for j in range(i, len(feeds)):
+
               if remove_fpga is True:
                    # Remove fpga phases written in .h5 file
-                   dfs[:, misc.feed_map(i, j, 256)] *= np.exp(-1j * np.angle(Gh5[i] * np.conj(Gh5[j])))
+                   dfs[:, misc.feed_map(i, j, 256)] *= \
+                       np.exp(+1j * np.angle(Gh5[i] * np.conj(Gh5[j])))
 
               if remove_instr is True:
                    # Apply gains solved for 
-                   dfs[:, misc.feed_map(i, j, 256)] *= np.exp(-1j * np.angle(gain_mat[i] * np.conj(gain_mat[j])))
+                   dfs[:, misc.feed_map(i, j, 256)] \
+                       *= np.exp(-1j * np.angle(gain_mat[i] * np.conj(gain_mat[j])))
     
-    return dfs, Gh5
+    print "Summed h5 gains: ", Gh5.sum()
+
+    return dfs
 
 """
 def check_gain_solution(infile_pkl, infile_h5, freq=305, transposed=True):
@@ -347,8 +360,6 @@ def do_it_all(Gains, input_pkls):
           feeds = feeds[ch_map]
           g = Gains[:, feeds]
 
-          print feeds
-
           data_pkl = apply_gain(data_pkl, g, 16)     
 
           # Write pickle
@@ -356,9 +367,7 @@ def do_it_all(Gains, input_pkls):
           write_pkl(outfile, data_pkl)
 
           print "=================================="
-
-          print "Wrote to ", outfile 
-
+          print "Wrote to %s" % outfile 
           print "=================================="
 
           print ""
@@ -385,8 +394,6 @@ if __name__=='__main__':
           feeds = np.where(slot_id==x)[0]#[::-1]
           feeds = feeds[ch_map]
           g = Gains[:, feeds]
-
-          print feeds
 
           data_pkl = apply_gain(data_pkl, g, 16)     
 
