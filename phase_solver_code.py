@@ -119,11 +119,12 @@ def read_data(reader_obj, src, prod_sel, freq_sel=None, del_t=50):
     return and_obj
 
 def solve_untrans(filename, corrs, feeds, inp, src, nfreq=1024, transposed=False, nfeed=128):
-    del_t = 600
+    del_t = 350
 
     f = h5py.File(filename, 'r')
 
-    times = f['index_map']['time'].value['ctime']
+    # Add half an integration time to each. 
+    times = f['index_map']['time'].value['ctime'] + 10.50
     src_trans = eph.transit_times(src, times[0])
     
     # try to account for differential arrival time from 
@@ -152,7 +153,7 @@ def solve_untrans(filename, corrs, feeds, inp, src, nfreq=1024, transposed=False
     k=0
     for i in range(nsplit):
         k+=1
-        ## Divides the arrays up into nfreq / nsplit freq chunks and solves those
+        # Divides the arrays up into nfreq / nsplit freq chunks and solves those
         frq = range(i * nfreq // nsplit, (i+1) * nfreq // nsplit)
         
         print "      %d:%d \n" % (frq[0], frq[-1])
@@ -169,7 +170,10 @@ def solve_untrans(filename, corrs, feeds, inp, src, nfreq=1024, transposed=False
             vis = vis[..., offp::2]
 
             gg = f['gain_coeff'][frq[0]:frq[-1]+1, feeds, 0]
-            gain_coeff = (gg['r'] + 1j * gg['i'])
+#            gain_coeff = (gg['r'] + 1j * gg['i'])
+
+            # Take the conjugate of the gains for now. Quick to fpga confusion.
+            gain_coeff = gg['r'][:] - 1j * gg['i'][:]
 
             del gg
             
