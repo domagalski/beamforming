@@ -1,11 +1,14 @@
 import numpy as np 
 #import dpkt
 
-
 class ReadBeamform:
+     """ A class to read, correlate, and process CHIME vdif data. 
+     """
 
-     def __init__(self, pmin=0, pmax=1000):
-          self.pmax = pmax # Quick fix. Effectively no upper limit.
+     def __init__(self, pmin=0, pmax=1e7):
+          # Dumb way of setting total number of 
+          # packets to read from each file. 1e7 should get to end.
+          self.pmax = pmax 
           self.pmin = pmin
           self.nfr = 8 # Number of links 
           self.npol = 2
@@ -53,6 +56,8 @@ class ReadBeamform:
                frame index
           time : int 
                time after reference epoch in seconds
+          count : int
+               fpga count               
           """
           # Should be 8 words long
           head_int = np.fromstring(header, dtype=np.uint32) 
@@ -164,17 +169,17 @@ class ReadBeamform:
                return header, data
 
      def read_file_dat(self, fn):
-          """ Get header and data from a pcap file
+          """ Get header and data from .dat file
    
           Parameters  
-          ----------                                                                                                   
+          ----------
           fn : np.str 
-               file name                                                                                        
+               file name                                                                 
 
           Returns
           -------                                                                                                                                          
           header : array_like
-               (nt, 5) array, see self.parse_header                                                                                                                                     
+               (nt, 6) array, see self.parse_header
           data : array_like 
                (nt, ntfr * 2 * nfq)                                                                                                                                                     
           """
@@ -230,17 +235,9 @@ class ReadBeamform:
                seq = header[:, -1] 
                times = (seq - seq[0]) / 625.0**2 + times[0]
 
-          return times
+          return self.J2000_to_unix(times)
 
-     def corrbin(self, data):
-
-          data_corr = data[:, 0::2]**2 + data[:, 1::2]**2
-
-          data_corr = data_corr.reshape(-1, 625, 8).mean(1) 
-
-          return data_corr         
-
-     def h_index(self, data, header, trb=1):
+     def correlate_and_fill(self, data, header, trb=1):
           """ Take header and data arrays and reorganize
           to produce the full time, pol, freq array
 
@@ -265,25 +262,51 @@ class ReadBeamform:
           print "Data has", len(slots), "slots: ", slots
 
           data_corr = data[:, 0::2]**2 + data[:, 1::2]**2
-
+          data2 = data.reshape(-1, 625, 8, 2).transpose((0, 2, 1, 3))
           data_corr = data_corr.reshape(-1, 625, 8).mean(1)
 
-#          This was before I knew andata did NOT correct for packetloss.
-#          nonz_count = np.where(data_corr[:, :, :]==0, 0, 1).sum(1)
-#          data_corr = data_corr.sum(1) / nonz_count
-#          data_corr[np.isnan(data_corr)] = 0.0
 
           arr = np.zeros([data_corr.shape[0] / self.nfr / 2 / len(slots) + 256
-                                   , self.npol, self.nfreq], np.float32)
+                                   , 2*self.npol, self.nfreq], np.float32)
           tt = np.zeros([data_corr.shape[0] / self.nfr / 2 / len(slots) + 256
                                    , self.npol, self.nfreq], np.float64)
 
-          for pp in range(self.npol):
-               for qq in range(self.nfr):
-                    for ii in range(16):
-                         ind = np.where((header[:, 0]==pp) & (header[:, 1]==qq) & (header[:, 2]==ii))[0]
+          for qq in range(self.nfr):
+               for ii in range(16):
+                    fin = ii + 16 * qq + 128 * np.arange(8)
 
-                         fin = ii + 16 * qq + 128 * np.arange(8)
+                    indpol0 = np.where((header[:, 0]==0) & (header[:, 1]==qq) & (header[:, 2]==ii))[0]
+                    indpol1 = np.where((header[:, 0]==1) & (header[:, 1]==qq) & (header[:, 2]==ii))[0]
+                    
+                    inl = min(len(indpol0), len(indpol1))
+
+                    indpol0 = indpol0[:inl]
+                    indpol1 = indpol1[:inl]
+
+                    xyreal = data2[indpol0,..., 0] * data2[indpol1,..., 0] \
+                                    + data2[indpol0,..., 1] * data2[indpol1,..., 1]
+
+                    xyimag = data2[indpol0,..., 1] * data2[indpol1,..., 0] \
+                                    - data2[indpol0,..., 0] * data2[indpol1,..., 1]
+
+                    xyreal = xyreal.mean(-1)
+                    xyimag = xyimag.mean(-1)
+
+                    arr[:inl, 1, fin] = xyreal
+                    arr[:inl, 2, fin] = xyimag
+
+                    arr[:len(indpol0), 0, fin] = data_corr[indpol0]
+                    arr[:len(indpol1), 3, fin] = data_corr[indpol1]
+
+                    if (len(indpol0) >= 1) and (len(indpol0) < arr.shape[0]): 
+                         tt[:inl, 0, fin] = self.get_times(header[indpol0]).repeat(8).reshape(-1, 8)
+
+                    if (len(indpol1) >= 1) and (len(indpol1) < arr.shape[0]):
+                         tt[:inl, 1, fin] = self.get_times(header[indpol1]).repeat(8).reshape(-1, 8)
+                    
+                    """
+                    for pp in range(self.npol):
+                         ind = np.where((header[:, 0]==pp) & (header[:, 1]==qq) & (header[:, 2]==ii))[0]
                          
                          if len(ind) > arr.shape[0]:
                               print "Skipping, ind is too short"
@@ -291,47 +314,49 @@ class ReadBeamform:
 
                          if (len(ind) >= 1) and (len(ind) < arr.shape[0]):
 
-                              # Could change ":len(ind)" to time_ind or something.
                               arr[:len(ind), pp, fin] = data_corr[ind]
                               
                               tt[:len(ind), pp, fin] = self.get_times(header[ind]).repeat(8).reshape(-1, 8)
                               
                               tt[len(ind):, pp, fin] = tt[len(ind)-1, pp, fin]
+                    """
+
+          print arr.sum(0).sum(-1)
+          return arr, tt
 
 
-          del data_corr
+     def correlate_and_reorg(self, header, data):
+          """ 
+          """
+          assert data.shape[-1] == 8
 
-          return arr, self.J2000_to_unix(tt)
-
-     def hind2(self, header, data):
-          
           seq = list(set(header[:, -1]))
           seq.sort()
 
-          print len(seq)
-          
-          npackets = (seq[-1] - seq[0]) / 625.0
-          times = (seq - seq[0]) / 625.**2 + self.get_times(header[0])
-          print times
 
-          Arr = np.zeros([npackets, 2, 1024])
+          npackets = (seq[-1] - seq[0]) / 625
+
+#          times = (seq - seq[0]) / 625.**2 #+ self.get_times(header[0])
+
+          seq_f = np.arange(seq[0], seq[-1], 625)
+
+          Arr = np.zeros([npackets, 2, self.nfreq])
 
           for pp in range(self.npol):
                for qq in range(self.nfr):
                     for ii in range(16):
-                         for tt in range(int(npackets)):
+                         for tt in range(len(seq_f)):
+                              ind = np.where((header[:, 0]==pp) & (header[:, 1]==qq) & \
+                                                (header[:, 2]==ii) & (header[:, -1]==seq_f[tt]))[0]
 
-                              ind = np.where((header[:, 0]==pp) & (header[:, 1]==qq) & (header[:, 2]==ii) & (header[:, -1]==seq[tt]))[0]
-                              
-                         fin = ii + 16 * qq + 128 * np.arange(8)
-          
-                         if len(ind) != 1:
-                              continue
+                              fin = ii + 16 * qq + 128 * np.arange(8)
                          
-                         Arr[tt, pp, fin] = data[ind]
+                              if len(ind) != 1:
+                                   continue
                          
+                              Arr[tt, pp, fin] = data[ind]
+
           return Arr
-                              
 
      def fill_arr(self, header, data, ntimes=None, trb=1):
           """ Take header and data arrays and reorganize
@@ -375,11 +400,22 @@ class ReadBeamform:
 
           return self.rebin_time(arr, trb)
 
+     def corrbin(self, data):
+          """ Take data, square and sum to produce
+          two autocorrelations.
+          """
 
-def JDr_to_unix(JD):
+          data_corr = data[:, 0::2]**2 + data[:, 1::2]**2
+
+          data_corr = data_corr.reshape(-1, 625, 8).mean(1)
+
+          return data_corr
+
+def MJD_to_unix(MJD):
      
-     return (JD + 2400000.5 - 2440587.5) * 86400.0
+     return (MJD + 2400000.5 - 2440587.5) * 86400.0
 
-def unix_to_JDr(t_unix):
+def unix_to_MJD(t_unix):
      
      return (t_unix / 86400.0) + 2440587.5 - 2400000.5
+
