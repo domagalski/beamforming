@@ -303,6 +303,7 @@ class ReadBeamform:
 
                     if (len(indpol1) >= 1) and (len(indpol1) < arr.shape[0]):
                          tt[:inl, 1, fin] = self.get_times(header[indpol1]).repeat(8).reshape(-1, 8)
+
                     
                     """
                     for pp in range(self.npol):
