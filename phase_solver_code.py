@@ -18,8 +18,10 @@ def plt_gains(vis, nu, img_name='out.png', bad_chans=[]):
     fig = plt.figure(figsize=(14, 14))
     
     # Plot up 128 feeds correlated with antenna "ant"
+
     ant = 1
     angle_err = 0
+
     for i in range(128):
         fig.add_subplot(32, 4, i+1)
 
@@ -119,7 +121,7 @@ def read_data(reader_obj, src, prod_sel, freq_sel=None, del_t=50):
     return and_obj
 
 def solve_untrans(filename, corrs, feeds, inp, src, nfreq=1024, transposed=False, nfeed=128):
-    del_t = 350
+    del_t = 400
 
     f = h5py.File(filename, 'r')
 
@@ -148,11 +150,16 @@ def solve_untrans(filename, corrs, feeds, inp, src, nfreq=1024, transposed=False
     print "Starting the solver"
     
     nsplit = 32
+    
     times = times[t_range[0]:t_range[-1]]
     
     k=0
-    for i in range(nsplit):
+    
+    # Start at a strong freq channel that can be plotted
+    # and from which we can find the noise source on-sample
+    for i in range(9, nsplit) + range(0, 9):
         k+=1
+
         # Divides the arrays up into nfreq / nsplit freq chunks and solves those
         frq = range(i * nfreq // nsplit, (i+1) * nfreq // nsplit)
         
@@ -164,34 +171,35 @@ def solve_untrans(filename, corrs, feeds, inp, src, nfreq=1024, transposed=False
             v = v[..., t_range[0]:t_range[-1]]
             vis = v['r'] + 1j * v['i']
 
-            autos = auto_corrs(nfeed)
-            offp = (abs(vis[:, autos, 0::2]).mean() > (abs(vis[:, autos, 1::2]).mean())).astype(int)
-
+            if k==1:
+                autos = auto_corrs(nfeed)
+                offp = (abs(vis[:, autos, 0::2]).mean() > (abs(vis[:, autos, 1::2]).mean())).astype(int)
+                times = times[offp::2]
+            
             vis = vis[..., offp::2]
 
-            gg = f['gain_coeff'][frq[0]:frq[-1]+1, feeds, 0]
-#            gain_coeff = (gg['r'] + 1j * gg['i'])
-
-            # Take the conjugate of the gains for now. Quick to fpga confusion.
-            gain_coeff = gg['r'][:] - 1j * gg['i'][:]
-
+            gg = f['gain_coeff'][frq[0]:frq[-1]+1, feeds, t_range[0]:t_range[-1]][..., offp::2]
+            gain_coeff = gg['r'] + 1j * gg['i']
+            
             del gg
             
         # Read in time and freq slice if data has not yet been transposed
         if transposed is False:
+            print "TRANSPOSED V OF CODE DOESN'T WORK YET!"
             v = f['vis'][t_range[0]:t_range[-1]:2, frq[0]:frq[-1]+1, corrs]
             vis = v['r'][:] + 1j * v['i'][:]
+            del v
 
             gg = f['gain_coeff'][0, frq[0]:frq[-1]+1, feeds]
             gain_coeff = gg['r'][:] + 1j * gg['i'][:]
 
-            del v
+            vis = vis[..., offp::2]
 
             vis = np.transpose(vis, (1, 2, 0))
-        
-        if k==1: times = times[offp::2]
+
+
         # Remove fpga gains from data
-        vis = remove_fpga_gains(vis, gain_coeff, nfeed=nfeed)
+        vis = remove_fpga_gains(vis, gain_coeff, nfeed=nfeed, triu=False)
 
         # Remove offset from galaxy
         vis -= 0.5 * (vis[..., 0] + vis[..., -1])[..., np.newaxis]
@@ -209,7 +217,7 @@ def solve_untrans(filename, corrs, feeds, inp, src, nfreq=1024, transposed=False
 
         trans_pix = np.argmax(np.bincount(np.argmax(dr, axis=-1)))
 
-        Gains[frq] = a[..., trans_pix-2:trans_pix+2].mean(-1)
+        Gains[frq] = a[..., trans_pix-3:trans_pix+4].mean(-1)
 
 
         # Plot up post-fs phases to see if everything has been fixed
@@ -242,10 +250,10 @@ def fs_from_file(filename, frq, src, nfreq=1024,
     del_phi = (src._dec - np.radians(eph.CHIMELATITUDE)) * np.sin(np.radians(1.988))
     del_phi *= (24 * 3600.0) / (2 * np.pi)
 
-    # Adjust the transit time accordingly                                                                                             
+    # Adjust the transit time accordingly                                                                                   
     src_trans += del_phi
 
-    # Select +- del_t of transit, accounting for the mispointing                                                                      
+    # Select +- del_t of transit, accounting for the mispointing      
     t_range = np.where((times < src_trans + del_t) & (times > src_trans - del_t))[0]
 
     times = times[t_range[0]:t_range[-1]]#[offp::2] test
@@ -255,24 +263,24 @@ def fs_from_file(filename, frq, src, nfreq=1024,
     print "\n...... This data is from %s starting at RA: %f ...... \n" \
         % (eph.unix_to_datetime(times[0]), eph.transit_RA(times[0]))
 
-#    times = times[t_range[0]:t_range[-1]]
 
     if transposed is True:
         v = f['vis'][frq[0]:frq[-1]+1, :]
         v = v[..., t_range[0]:t_range[-1]]
         vis = v['r'] + 1j * v['i']
 
+        del v
 
-     # Read in time and freq slice if data has not yet been transposed
+    # Read in time and freq slice if data has not yet been transposed
     if transposed is False:
-         v = f['vis'][t_range[0]:t_range[-1]:2, frq[0]:frq[-1]+1, :]
+         v = f['vis'][t_range[0]:t_range[-1], frq[0]:frq[-1]+1, :]
          vis = v['r'][:] + 1j * v['i'][:]
          del v
-
          vis = np.transpose(vis, (1, 2, 0))
 
     inp = gen_inp()[0]
-    # Remove offset from galaxy                                                                                                                                                                                 
+
+    # Remove offset from galaxy                                                                                
     if subtract_avg is True:
         vis -= 0.5 * (vis[..., 0] + vis[..., -1])[..., np.newaxis]
 
@@ -283,59 +291,17 @@ def fs_from_file(filename, frq, src, nfreq=1024,
 
     # Fringestop to location of "src"
     data_fs = tools.fringestop_pathfinder(vis, eph.transit_RA(times), freq_MHZ, inp, src)
+#    data_fs = fringestop_pathfinder(vis, eph.transit_RA(times), freq_MHZ, inp, src)
 
 
     return data_fs
 
-def fs_and_correct_gains(fn_h5, fn_gain, src, freq=305, \
-                              del_t = 900, transposed=True, remove_fpga=True, remove_instr=True):
 
-#    dfs = pc.fringestop_and_sum(fn_h5, [1, 2],
-#                   freq, src, transposed=transposed,
-#                                return_unfs=True, meridian=False)[-2]
-
-    dfs = pc.fs_from_file(fn_h5, [freq], eph.CasA, del_t=1800)
-
-#    dfs = dfs[0].transpose()
-    ntimes = dfs.shape[0]
-
-    fg = h5py.File(fn_gain, 'r')
-
-    gx = fg['gainsx']
-    gy = fg['gainsy']
-
-    gain_mat = construct_gain_mat(gx, gy, 64)[freq]
-
-    f = h5py.File(fn_h5, 'r')
-    feeds = range(256)
-
-    if transposed is True:
-         g = f['gain_coeff'][freq, :, 0]
-         Gh5 = g['r'] + 1j * g['i']
-    else:
-         g = f['gain_coeff'][0, freq]
-         Gh5 = g['r'] + 1j * g['i']
-    
-    for i in range(len(feeds)):
-
-         for j in range(i, len(feeds)):
-              if remove_fpga is True:
-                   # Remove fpga phases written in .h5 file
-                   dfs[:, misc.feed_map(i, j, 256)] *= np.exp(-1j * np.angle(Gh5[i] * np.conj(Gh5[j])))
-
-              if remove_instr is True:
-                   # Apply gains solved for 
-                   dfs[:, misc.feed_map(i, j, 256)] *= np.exp(-1j * np.angle(gain_mat[i] * np.conj(gain_mat[j])))
-    
-    return dfs, Gh5
-
-
-
-def remove_fpga_gains(vis, gains, nfeed=128):
+def remove_fpga_gains(vis, gains, nfeed=128, triu=False):
     """ Remove fpga phases
     """
 
-    print "............ Removing FPGA gains ............ \n"
+    print "............ Removing FPGA gains, triu is %r ............ \n" % triu
 
     # Get gain matrix for visibilites g_i \times g_j^*
     #gains_corr = gains[:, :, np.newaxis] * np.conj(gains[:, np.newaxis])
@@ -349,7 +315,14 @@ def remove_fpga_gains(vis, gains, nfeed=128):
         for i in range(nfeed):
             for j in range(i, nfeed):
                 phi = np.angle(gains[nu, i] * np.conj(gains[nu, j]))
-                vis[nu, misc.feed_map(i, j, nfeed)] *= np.exp(-1j * phi)
+
+                # CHIME seems to have a lowertriangle X-engine, should
+                # in general use Vij = np.conj(xi) * xj
+                if triu==True:
+                    vis[nu, misc.feed_map(i, j, nfeed)] *= np.exp(-1j * phi)
+
+                elif triu==False:
+                    vis[nu, misc.feed_map(i, j, nfeed)] *= np.exp(1j * phi)
     
     return vis
 
@@ -454,23 +427,36 @@ def auto_corrs(nfeed):
 
     return autos
 
-def select_corrs(feeds, nfeed=256):
+def select_corrs(feeds, nfeed=256, feeds_cross=None):
     autos = []
     corrs = []
-    
-    for ii in range(len(feeds)):
-        for jj in range(ii, len(feeds)):
+    xycorrs = []
+
+    for ii, feedi in enumerate(feeds):
+
+        for jj, feedj in enumerate(feeds):
+
             if ii==jj:
-                autos.append(misc.feed_map(feeds[ii], feeds[jj], nfeed))
-            else:
-                corrs.append(misc.feed_map(feeds[ii], feeds[jj], nfeed))
-    
-    return autos, corrs
+
+                autos.append(misc.feed_map(feedi, feedj, nfeed))
+
+            if jj>ii:
+                corrs.append(misc.feed_map(feedi, feedj, nfeed))
+
+            if feeds_cross != None:
+                assert len(feeds) <= len(feeds_cross)
+                xycorrs.append(misc.feed_map(feedi, feeds_cross[jj], nfeed))
+
+    return autos, corrs, xycorrs
 
 def sum_corrs(data, feeds):
-    autos, corrs = select_corrs(feeds)
-    
-    return data[:, autos].sum(1) + 2 * data[:, corrs].sum(1)
+    autos, xcorrs = select_corrs(feeds)
+ 
+#    print "Adding phase errors"
+#    phase_rand = np.random.normal(0, 0.5, len(xcorrs))
+#    data[:, xcorrs] *= np.exp(1j * 0.5)
+
+    return data[:, autos].sum(1) + 2 * data[:, xcorrs].sum(1)
 
     
 def fill_nolan(times, ra, dec, feed_positions):
@@ -567,12 +553,13 @@ def fringestop_pathfinder(timestream, ra, freq, feeds, src, frick=None):
     xp, yp = feedpos[:, 0], feedpos[:, 1]
 
     # Calculate baseline separations and pack into product array                                                                                     \
-                                                                                                                                                      
+    print xp                                                                                                                                       
     xd = xp[:, np.newaxis] - xp[np.newaxis, :]
     yd = yp[:, np.newaxis] - yp[np.newaxis, :]
     xd = tools.pack_product_array(xd, axis=0)
     yd = tools.pack_product_array(yd, axis=0)
 
+    print xd[300:500]
     # Calculate wavelengths and UV place separations                                                                                                 \
 
     if frick != None:
