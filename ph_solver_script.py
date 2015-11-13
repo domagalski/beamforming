@@ -29,7 +29,6 @@ name = args.src
 tstring = args.fn[args.fn.index('201') : args.fn.index('201') + 15]
 
 outfile = './solutions/' + tstring + name + '.hdf5'
-print outfile 
 
 g = h5py.File(outfile, 'a')
 
@@ -58,9 +57,10 @@ if args.doall == 1:
 
 
 g = h5py.File(outfile, 'r')
-print g.items()
+
 gx = g['gainsx'][:]
 gy = g['gainsy'][:]
+
 g.close()
 
 outfile_tuple = './solutions/' + tstring + '_gainsoltup.dat'
@@ -68,7 +68,6 @@ outfile_tuple = './solutions/' + tstring + '_gainsoltup.dat'
 os.system('python write_gain_tuple.py ' + outfile + ' ' + outfile_tuple)
 
 print "Wrote down gains to: ", outfile
-
 
 if args.do_pkl_stuff == 1:
     Gains = correct_pkl.construct_gain_mat(gx, gy, 64)

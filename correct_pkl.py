@@ -79,10 +79,10 @@ def write_pkl(fnout, data):
 def phase_mult_remove_original_phase(data_pkl, phase, inp):
 
      phase[np.isnan(phase)] = 0.0
-     # Force the pkl carrier to be purely Real
 
+     # Force the pkl carrier to be purely Real
      data_pkl[inp][1][0] *= np.exp(-1j * np.angle(data_pkl[inp][1][0]))
-     
+
      # Now remove instrumental phase from carrier pkl 
      data_pkl[inp][1][0] *= np.exp(-1j * phase)
      data_pkl[inp][1][0] = np.round(data_pkl[inp][1][0].real)\
@@ -238,13 +238,10 @@ def check_gain_solution(infile_pkl, infile_h5, feeds, src, freq=305, transposed=
     return dfs, Gh5
 
 def fs_and_correct_gains(fn_h5, fn_gain, src, freq=305, \
-                              del_t = 900, transposed=True, remove_fpga=True, remove_instr=True):
+                              del_t = 900, transposed=True, remove_fpga_phase=True, remove_instr=True,
+                         remove_fpga=False):
 
-#    dfs = pc.fringestop_and_sum(fn_h5, [1, 2],
-#                   freq, src, transposed=transposed,
-#                                return_unfs=True, meridian=False)[-2]
-
-    dfs = pc.fs_from_file(fn_h5, [freq], eph.CasA, del_t=1800)
+    dfs = pc.fs_from_file(fn_h5, freq, src, del_t=1800, transposed=transposed)
 
     ntimes = dfs.shape[0]
 
@@ -268,22 +265,25 @@ def fs_and_correct_gains(fn_h5, fn_gain, src, freq=305, \
     else:
          g = f['gain_coeff'][0, freq]
          Gh5 = g['r'] + 1j * g['i']
-    
+
     print "doing the big loop"
 
-    for i in range(len(feeds)):
+    for fi, nu in enumerate(freq):
+         for i in range(len(feeds)):
+              for j in range(i, len(feeds)):
 
-         for j in range(i, len(feeds)):
+                   if remove_fpga is True:
+                        dfs[:, misc.feed_map(i, j, 256)] /= np.conj((Gh5[fi, i]) * np.conj(Gh5[fi, j]))
 
-              if remove_fpga is True:
-                   # Remove fpga phases written in .h5 file
-                   dfs[:, misc.feed_map(i, j, 256)] *= \
-                       np.exp(+1j * np.angle(Gh5[i] * np.conj(Gh5[j])))
+                   if remove_fpga_phase is True:
+                        # Remove fpga phases written in .h5 file
+                        dfs[:, misc.feed_map(i, j, 256)] *= \
+                            np.exp(+1j * np.angle(Gh5[fi, i] * np.conj(Gh5[fi, j])))
 
-              if remove_instr is True:
-                   # Apply gains solved for 
-                   dfs[:, misc.feed_map(i, j, 256)] \
-                       *= np.exp(-1j * np.angle(gain_mat[i] * np.conj(gain_mat[j])))
+                   if remove_instr is True:
+                        # Apply gains solved for 
+                        dfs[:, misc.feed_map(i, j, 256)] \
+                            *= np.exp(-1j * np.angle(gain_mat[fi, i] * np.conj(gain_mat[fi, j])))
     
     print "Summed h5 gains: ", Gh5.sum()
 

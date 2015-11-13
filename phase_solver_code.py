@@ -236,7 +236,7 @@ def solve_untrans(filename, corrs, feeds, inp, src, nfreq=1024, transposed=False
 
     return Gains
 
-def fs_from_file(filename, frq, src, nfreq=1024, 
+def fs_from_file(filename, frq, src,  
                  del_t=900, transposed=True, subtract_avg=False):
 
     f = h5py.File(filename, 'r')
@@ -326,12 +326,6 @@ def remove_fpga_gains(vis, gains, nfeed=128, triu=False):
     
     return vis
 
-#    for nu in range(vis.shape[0]):
-#        gains_mat[nu] = gains_corr[nu][ind]
-        
-#    phase = np.angle(gains_mat)[..., np.newaxis]
-
-#    return vis * np.exp(-1j * phase)
     
 def correct_dfs(dfs, Gains, nfeed=256):
     """ Corrects fringestopped visibilities
@@ -450,7 +444,7 @@ def select_corrs(feeds, nfeed=256, feeds_cross=None):
     return autos, corrs, xycorrs
 
 def sum_corrs(data, feeds):
-    autos, xcorrs = select_corrs(feeds)
+    autos, xcorrs, xycorrs = select_corrs(feeds)
  
 #    print "Adding phase errors"
 #    phase_rand = np.random.normal(0, 0.5, len(xcorrs))
@@ -539,32 +533,18 @@ def fringestop_pathfinder(timestream, ra, freq, feeds, src, frick=None):
     import scipy.constants
     ephemeris = eph
 
-    # Calculate the hour angle                                                                                                                       \
-                                                                                                                                                      
     ha = (np.radians(ra) - src._ra)[np.newaxis, np.newaxis, :]
 
-    _PF_LAT = np.radians(ephemeris.CHIMELATITUDE)   # Latitude of pathfinder                                                                         \
-                                                                                                                                                      
-
-    # Get feed positions                                                                                                                             \
-                                                                                                                                                      
-    feedpos = tools.get_feed_positions(feeds)    
-
+    _PF_LAT = np.radians(ephemeris.CHIMELATITUDE)   # Latitude of pathfinder                                                                                                                                                                            
     xp, yp = feedpos[:, 0], feedpos[:, 1]
 
-    # Calculate baseline separations and pack into product array                                                                                     \
-    print xp                                                                                                                                       
     xd = xp[:, np.newaxis] - xp[np.newaxis, :]
     yd = yp[:, np.newaxis] - yp[np.newaxis, :]
     xd = tools.pack_product_array(xd, axis=0)
     yd = tools.pack_product_array(yd, axis=0)
 
-    print xd[300:500]
-    # Calculate wavelengths and UV place separations                                                                                                 \
-
     if frick != None:
         frick = 800.0 - 400 / 1024.0 * frick
-#        freq = freq * 0.0 + frick
 
     print "Using %d" % freq
 
@@ -572,9 +552,6 @@ def fringestop_pathfinder(timestream, ra, freq, feeds, src, frick=None):
     u = xd[np.newaxis, :, np.newaxis] / wv
     v = yd[np.newaxis, :, np.newaxis] / wv
 
-
-    # Construct fringestop phase and set any non CHIME feeds to have zero phase                                                                      \
-                                                                                                                                                      
     fs_phase = tools.fringestop_phase(ha, _PF_LAT, src._dec, u, v) 
     fs_phase = np.where(np.isnan(fs_phase), np.zeros_like(fs_phase), fs_phase)
 
@@ -761,6 +738,43 @@ def noise_src_phase(fn_ns_sol, fn_sky_sol, src=eph.CasA, trb=10):
     return np.angle(gains_sky)[:, np.newaxis] + phase 
 
 
+def find_transit(time0='Now', src=eph.CasA):
+    import time
+    
+    if time0 == 'Now':
+        time0 = time.time()
+
+    # Get reference datetime from unixtime
+    dt_now = eph.unix_to_datetime(time0)
+    dt_now = dt_now.isoformat()
+
+    # Only use relevant characters in datetime string
+    dt_str = dt_now.replace("-", "")[:9]
+    dirnm = '/mnt/gong/archive/' + dt_str
+
+    filelist = glob.glob(dirnm + '*/*h5')
+    
+    ff = None
+
+    # Step through each file and find that day's transit
+    for ff in filelist:
+
+        try:
+            andataReader = andata.Reader(ff)
+            acqtimes = andataReader.time
+            trans_time = eph.transit_times(src, acqtimes[0])
+            
+            if (acqtimes[0] < trans_time and acqtimes[-1] > trans_time):
+                print "On ", eph.unix_to_datetime(trans_time)
+                print "foundit in %s \n" % ff
+                break
+
+        except (KeyError, ValueError, IOError):
+            pass
+            
+    return ff
+
+
 flist = [48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 
          60, 61, 62, 63, 16, 17, 18, 19, 20, 21, 22, 23, 
          24, 25, 26, 27, 28, 29, 30, 31, 240, 241, 242, 
@@ -784,6 +798,7 @@ flist = [48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59,
          79, 160, 161, 162, 163, 164, 165, 166, 167, 168, 169,
          170, 171, 172, 173, 174, 175, 128, 129, 130, 131, 132, 
          133, 134, 135, 136, 137, 138, 139, 140, 141, 142, 143]
+
 
 
 
