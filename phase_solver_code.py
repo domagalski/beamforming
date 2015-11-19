@@ -3,27 +3,54 @@ import sys
 import numpy as np
 import datetime
 import h5py
+import glob
 
 import misc_data_io as misc
 from ch_util import andata, ephemeris as eph, tools
+import correct_pkl as cp
 
 import matplotlib
-import matplotlib.pyplot as plt
 matplotlib.use('Agg')    
 
-def plt_gains(vis, nu, img_name='out.png'):
-    fig = plt.figure(figsize=(14,14))
+import matplotlib.pyplot as plt
+
+def plt_gains(vis, nu, img_name='out.png', bad_chans=[]):
+    fig = plt.figure(figsize=(14, 14))
     
+    # Plot up 128 feeds correlated with antenna "ant"
+
+    ant = 1
+    angle_err = 0
+
     for i in range(128):
         fig.add_subplot(32, 4, i+1)
-        if i==1:
-            plt.plot(vis[nu, misc.feed_map(1, i+1, 128)])
-        plt.plot(np.angle(vis[nu, misc.feed_map(1, i+1, 128)]))
-        plt.axis('off')
-        plt.axhline(0.0)
-        plt.ylim(-np.pi, np.pi)
+
+        if i==ant:
+            plt.plot(vis[nu, misc.feed_map(ant, i+1, 128)])
+            plt.xlim(0, len(vis[nu, 0]))
+        else:
+            angle_err += np.mean(abs(np.angle(vis[nu, misc.feed_map(ant, i+1, 128)]))) / 127.0
+            plt.plot((np.angle(vis[nu, misc.feed_map(ant, i+1, 128)])))
+            #plt.plot(vis[nu, misc.feed_map(ant, i+1, 128)])
+            plt.axis('off')
+            plt.axhline(0.0, color='black')
+
+            oo = np.round(np.std(np.angle(vis[nu, misc.feed_map(ant, i+1, 128)]) * 180 / np.pi))
+            plt.title(np.str(oo) + ',' + np.str(i))
+
+            if i in bad_chans:
+                plt.plot(np.angle(vis[nu, misc.feed_map(ant, i+1, 128)]), color='red')
+            plt.ylim(-np.pi, np.pi)
+
+    plt.title(np.str(180 / np.pi * angle_err))
+            
+    del vis
+
+    print "\n Wrote to %s \n" % img_name
 
     fig.savefig(img_name)
+
+    del fig
 
 def solve_gain(data, feeds=None):
     """
@@ -71,8 +98,9 @@ def solve_gain(data, feeds=None):
 
     dr[dr != dr] = 0.0
 
-    print "Dynamic range max:", dr.max()
-    print dr[-1]
+    print "Dynamic range max: %f" % dr.max()
+    print dr[0]
+
     return dr, gain
 
 def read_data(reader_obj, src, prod_sel, freq_sel=None, del_t=50):
@@ -92,81 +120,223 @@ def read_data(reader_obj, src, prod_sel, freq_sel=None, del_t=50):
 
     return and_obj
 
-def solve_untrans(filename, corrs, inp, src, nfreq=1024, transposed=False):
-    del_t = 200
+def solve_untrans(filename, corrs, feeds, inp, src, nfreq=1024, transposed=False, nfeed=128):
+    del_t = 400
 
     f = h5py.File(filename, 'r')
 
-    times = f['index_map']['time'].value['ctime']
-    
-    # Adjust for cylinder rotation. Things should arrive ~half a degree late. 
-    src._ra += np.radians(0.35)
-
+    # Add half an integration time to each. 
+    times = f['index_map']['time'].value['ctime'] + 10.50
     src_trans = eph.transit_times(src, times[0])
+    
+    # try to account for differential arrival time from 
+    # cylinder rotation. 
+    del_phi = (src._dec - np.radians(eph.CHIMELATITUDE)) * np.sin(np.radians(1.988))
+    del_phi *= (24 * 3600.0) / (2 * np.pi)
 
-    # Select +-100 seconds of transit                                                                                                 
+    # Adjust the transit time accordingly
+    src_trans += del_phi
+
+    # Select +- del_t of transit, accounting for the mispointing 
     t_range = np.where((times < src_trans + del_t) & (times > src_trans - del_t))[0]
+ 
+    print "\n...... This data is from %s starting at RA: %f ...... \n" \
+        % (eph.unix_to_datetime(times[0]), eph.transit_RA(times[0]))
 
-    times = times[t_range[0]:t_range[-1]:2]
+    assert (len(t_range) > 0), "Source is not in this acq"
 
-    print eph.transit_RA(times)
-
-    Gains = np.zeros([nfreq, 128, len(times)], np.complex128)
+    Gains = np.zeros([nfreq, nfeed], np.complex128)
     
     print "Starting the solver"
     
     nsplit = 32
+    
+    times = times[t_range[0]:t_range[-1]]
+    
+    k=0
+    
+    # Start at a strong freq channel that can be plotted
+    # and from which we can find the noise source on-sample
+    for i in range(9, nsplit) + range(0, 9):
+        k+=1
 
-    for i in range(nsplit):
-        
-        ## Divides the arrays up into nfreq / nsplit freq chunks and solves those
+        # Divides the arrays up into nfreq / nsplit freq chunks and solves those
         frq = range(i * nfreq // nsplit, (i+1) * nfreq // nsplit)
+        
+        print "      %d:%d \n" % (frq[0], frq[-1])
 
-        print "      ", frq[0], ":", frq[-1]
-
+        # Read in time and freq slice if data has already been transposed
         if transposed is True:
             v = f['vis'][frq[0]:frq[-1]+1, corrs, :]
-            v = v[..., t_range[0]:t_range[-1]:2]
+            v = v[..., t_range[0]:t_range[-1]]
             vis = v['r'] + 1j * v['i']
-            del v
-            print "Transie"
 
+            if k==1:
+                autos = auto_corrs(nfeed)
+                offp = (abs(vis[:, autos, 0::2]).mean() > (abs(vis[:, autos, 1::2]).mean())).astype(int)
+                times = times[offp::2]
+            
+            vis = vis[..., offp::2]
+
+            gg = f['gain_coeff'][frq[0]:frq[-1]+1, feeds, t_range[0]:t_range[-1]][..., offp::2]
+            gain_coeff = gg['r'] + 1j * gg['i']
+            
+            del gg
+            
+        # Read in time and freq slice if data has not yet been transposed
         if transposed is False:
+            print "TRANSPOSED V OF CODE DOESN'T WORK YET!"
             v = f['vis'][t_range[0]:t_range[-1]:2, frq[0]:frq[-1]+1, corrs]
             vis = v['r'][:] + 1j * v['i'][:]
             del v
-            vis = np.transpose(vis, (1, 2, 0))
-            print "Untransie"
 
+            gg = f['gain_coeff'][0, frq[0]:frq[-1]+1, feeds]
+            gain_coeff = gg['r'][:] + 1j * gg['i'][:]
+
+            vis = vis[..., offp::2]
+
+            vis = np.transpose(vis, (1, 2, 0))
+
+
+        # Remove fpga gains from data
+        vis = remove_fpga_gains(vis, gain_coeff, nfeed=nfeed, triu=False)
+
+        # Remove offset from galaxy
         vis -= 0.5 * (vis[..., 0] + vis[..., -1])[..., np.newaxis]
-        
+   
         freq_MHZ = 800.0 - np.array(frq) / 1024.0 * 400.
-        
+    
+        baddies = np.where(np.isnan(tools.get_feed_positions(inp)[:, 0]))[0]
+
+        # Fringestop to location of "src"
         data_fs = tools.fringestop_pathfinder(vis, eph.transit_RA(times), freq_MHZ, inp, src)
 
         del vis
 
         dr, a = solve_gain(data_fs)
 
-        Gains[frq] = a 
+        trans_pix = np.argmax(np.bincount(np.argmax(dr, axis=-1)))
 
-        plt_gains(data_fs, 0, img_name='./phs_plots/dfs' + np.str(frq[0]) + '.png')
-        dfs_corr = correct_dfs(data_fs, Gains[frq], nfeed=128)
-        plt_gains(dfs_corr, 0, img_name='./phs_plots/dfs_corr' + np.str(frq[0]) + '.png')
+        Gains[frq] = a[..., trans_pix-3:trans_pix+4].mean(-1)
 
-        del data_fs, a, dfs_corr
+
+        # Plot up post-fs phases to see if everything has been fixed
+        if frq[0] == 9 * nsplit:
+            print "======================"
+            print "   Plotting up freq: %d" % frq[0]
+            print "======================"
+
+            plt_gains(data_fs, 0, img_name='./phs_plots/dfs' + np.str(frq[17]) + '.png', bad_chans=baddies)
+            dfs_corr = correct_dfs(data_fs, np.angle(Gains[frq])[..., np.newaxis], nfeed=128)
+            plt_gains(dfs_corr, 0, img_name='./phs_plots/dfs_corrmeanflah' + np.str(frq[17]) + '.png', bad_chans=baddies)
+
+            del dfs_corr
+
+        del data_fs, a
 
     return Gains
 
+def fs_from_file(filename, frq, src,  
+                 del_t=900, transposed=True, subtract_avg=False):
+
+    f = h5py.File(filename, 'r')
+
+    times = f['index_map']['time'].value['ctime'] + 10.6
+
+    src_trans = eph.transit_times(src, times[0])
+
+    # try to account for differential arrival time from cylinder rotation. 
+
+    del_phi = (src._dec - np.radians(eph.CHIMELATITUDE)) * np.sin(np.radians(1.988))
+    del_phi *= (24 * 3600.0) / (2 * np.pi)
+
+    # Adjust the transit time accordingly                                                                                   
+    src_trans += del_phi
+
+    # Select +- del_t of transit, accounting for the mispointing      
+    t_range = np.where((times < src_trans + del_t) & (times > src_trans - del_t))[0]
+
+    times = times[t_range[0]:t_range[-1]]#[offp::2] test
+
+    print "Time range:", times[0], times[-1]
+
+    print "\n...... This data is from %s starting at RA: %f ...... \n" \
+        % (eph.unix_to_datetime(times[0]), eph.transit_RA(times[0]))
+
+
+    if transposed is True:
+        v = f['vis'][frq[0]:frq[-1]+1, :]
+        v = v[..., t_range[0]:t_range[-1]]
+        vis = v['r'] + 1j * v['i']
+
+        del v
+
+    # Read in time and freq slice if data has not yet been transposed
+    if transposed is False:
+         v = f['vis'][t_range[0]:t_range[-1], frq[0]:frq[-1]+1, :]
+         vis = v['r'][:] + 1j * v['i'][:]
+         del v
+         vis = np.transpose(vis, (1, 2, 0))
+
+    inp = gen_inp()[0]
+
+    # Remove offset from galaxy                                                                                
+    if subtract_avg is True:
+        vis -= 0.5 * (vis[..., 0] + vis[..., -1])[..., np.newaxis]
+
+    freq_MHZ = 800.0 - np.array(frq) / 1024.0 * 400.
+    print len(inp)
+
+    baddies = np.where(np.isnan(tools.get_feed_positions(inp)[:, 0]))[0]
+
+    # Fringestop to location of "src"
+    data_fs = tools.fringestop_pathfinder(vis, eph.transit_RA(times), freq_MHZ, inp, src)
+#    data_fs = fringestop_pathfinder(vis, eph.transit_RA(times), freq_MHZ, inp, src)
+
+
+    return data_fs
+
+
+def remove_fpga_gains(vis, gains, nfeed=128, triu=False):
+    """ Remove fpga phases
+    """
+
+    print "............ Removing FPGA gains, triu is %r ............ \n" % triu
+
+    # Get gain matrix for visibilites g_i \times g_j^*
+    #gains_corr = gains[:, :, np.newaxis] * np.conj(gains[:, np.newaxis])
+    
+    # Take only upper triangle of gain matrix
+    #ind = np.triu_indices(nfeed)
+    
+    #gains_mat = np.zeros([vis.shape[0], len(ind[0])], dtype=gains.dtype)
+
+    for nu in range(vis.shape[0]):
+        for i in range(nfeed):
+            for j in range(i, nfeed):
+                phi = np.angle(gains[nu, i] * np.conj(gains[nu, j]))
+
+                # CHIME seems to have a lowertriangle X-engine, should
+                # in general use Vij = np.conj(xi) * xj
+                if triu==True:
+                    vis[nu, misc.feed_map(i, j, nfeed)] *= np.exp(-1j * phi)
+
+                elif triu==False:
+                    vis[nu, misc.feed_map(i, j, nfeed)] *= np.exp(1j * phi)
+    
+    return vis
+
+    
 def correct_dfs(dfs, Gains, nfeed=256):
     """ Corrects fringestopped visibilities
     """
 
     dfs_corrm = dfs.copy()
-    
+
     for i in range(nfeed):
         for j in range(i, nfeed):
-            dfs_corrm[:, misc.feed_map(i, j, 128)] *= np.conj(Gains[:, i] * np.conj(Gains[:, j]))
+            #dfs_corrm[:, misc.feed_map(i, j, 128)] *= np.conj(Gains[:, i] * np.conj(Gains[:, j]))
+            dfs_corrm[:, misc.feed_map(i, j, 128)] *= np.exp(-1j * (Gains[:, i] - Gains[:, j])) 
             
     return dfs_corrm
 
@@ -241,70 +411,160 @@ def gen_inp(nfeed=256):
         inpx.append(corrinput_real[xfeeds[i]])
         inpy.append(corrinput_real[yfeeds[i]])
 
-    return corrinput_real, inpx, inpy, xcorrs, ycorrs
+    return corrinput_real, inpx, inpy, xcorrs, ycorrs, xfeeds, yfeeds
 
-def select_corrs(feeds, nfeed=256):
+def auto_corrs(nfeed):
+    autos = []
+
+    for ii in range(nfeed):
+        autos.append(misc.feed_map(ii, ii, nfeed))
+
+    return autos
+
+def select_corrs(feeds, nfeed=256, feeds_cross=None):
     autos = []
     corrs = []
-    
-    for ii in range(len(feeds)):
-        for jj in range(ii, len(feeds)):
+    xycorrs = []
+
+    for ii, feedi in enumerate(feeds):
+
+        for jj, feedj in enumerate(feeds):
+
             if ii==jj:
-                autos.append(misc.feed_map(feeds[ii], feeds[jj], nfeed))
-            else:
-                corrs.append(misc.feed_map(feeds[ii], feeds[jj], nfeed))
-    
-    return autos, corrs
+
+                autos.append(misc.feed_map(feedi, feedj, nfeed))
+
+            if jj>ii:
+                corrs.append(misc.feed_map(feedi, feedj, nfeed))
+
+            if feeds_cross != None:
+                assert len(feeds) <= len(feeds_cross)
+                xycorrs.append(misc.feed_map(feedi, feeds_cross[jj], nfeed))
+
+    return autos, corrs, xycorrs
 
 def sum_corrs(data, feeds):
-    autos, corrs = select_corrs(feeds)
-    
-    return data[:, autos].sum(1) + 2 * data[:, corrs].sum(1)
+    autos, xcorrs, xycorrs = select_corrs(feeds)
+ 
+#    print "Adding phase errors"
+#    phase_rand = np.random.normal(0, 0.5, len(xcorrs))
+#    data[:, xcorrs] *= np.exp(1j * 0.5)
 
-def fringestop_pathfinder(timestream, ra, freq, feeds, src):
+    return data[:, autos].sum(1) + 2 * data[:, xcorrs].sum(1)
+
+    
+def fill_nolan(times, ra, dec, feed_positions):
+
+    nt = len(times)
+    na = 256
+
+    PH = np.zeros([1, 32896, nt])
+
+    for tt in range(len(times)):
+        pht = nolan_phases(times[tt], ra, dec, feed_positions)
+
+        PH[0, :, tt] = (pht.repeat(na).reshape(-1, na)\
+             - (pht.repeat(na).reshape(-1, na)).transpose())[np.triu_indices(256)]
+
+    return PH
+
+def nolan_ra(unix_time):
+    D2R = np.pi / 180.0
+    TAU = 2 * np.pi
+
+    one_over_c = 3.3356
+    phi_0 = 280.46 #- 0.211
+    lst_rate = 360./86164.09054
+
+    inst_long = -119.6175
+    inst_lat = 49.3203
+
+    j2000_unix = 946728000
+    
+    # This function disagrees with Kiyo's ephemeris.transit_RA
+    # since Nolan does not account for precession/nutation. This offset
+    # should take care of that.
+    precession_offset = (unix_time - j2000_unix) * 0.012791 / (365 * 24 * 3600) 
+
+    lst = phi_0 + inst_long + lst_rate*(unix_time - j2000_unix) - precession_offset
+    lst = np.fmod(lst, 360)
+
+    return lst
+
+def nolan_phases(unix_time, ra, dec, feed_positions):
+    D2R = np.pi / 180.0
+    TAU = 2 * np.pi
+
+    one_over_c = 3.3356
+    phi_0 = 280.46
+    lst_rate = 360./86164.09054
+
+    inst_long = -119.62
+    inst_lat = 49.32
+
+    j2000_unix = 946728000
+    lst = phi_0 + inst_long + lst_rate*(unix_time - j2000_unix)
+
+    lst = np.fmod(lst, 360.)
+    hour_angle = lst - ra
+
+    alt = np.sin(dec*D2R)*np.sin(inst_lat*D2R)+np.cos(dec*D2R)*np.cos(inst_lat*D2R)*np.cos(hour_angle*D2R)
+    alt = np.arcsin(alt)
+
+    az = (np.sin(dec*D2R) - np.sin(alt)*np.sin(inst_lat*D2R))/(np.cos(alt)*np.cos(inst_lat*D2R))
+    az = np.arccos(az)
+
+    if np.sin(hour_angle*D2R) >= 0:
+        az = TAU - az
+
+    phases = np.zeros([256])
+
+    for i in range(256):
+        projection_angle = 90*D2R - np.arctan2(feed_positions[2*i+1],feed_positions[2*i])
+        offset_distance  = np.cos(alt)*np.sqrt(feed_positions[2*i]*feed_positions[2*i] + feed_positions[2*i+1]*feed_positions[2*i+1])
+        effective_angle  = projection_angle - az
+
+        phases[i] = 2 * np.pi * np.cos(effective_angle) * offset_distance * one_over_c
+
+    return phases
+
+def fringestop_pathfinder(timestream, ra, freq, feeds, src, frick=None):
 
     import scipy.constants
     ephemeris = eph
 
-    # Calculate the hour angle                                                                                                                       \
-                                                                                                                                                      
     ha = (np.radians(ra) - src._ra)[np.newaxis, np.newaxis, :]
 
-    _PF_LAT = np.radians(ephemeris.CHIMELATITUDE)   # Latitude of pathfinder                                                                         \
-                                                                                                                                                      
-
-    # Get feed positions                                                                                                                             \
-                                                                                                                                                      
-    feedpos = tools.get_feed_positions(feeds)
+    _PF_LAT = np.radians(ephemeris.CHIMELATITUDE)   # Latitude of pathfinder                                                                                                                                                                            
     xp, yp = feedpos[:, 0], feedpos[:, 1]
 
-    # Calculate baseline separations and pack into product array                                                                                     \
-                                                                                                                                                      
     xd = xp[:, np.newaxis] - xp[np.newaxis, :]
     yd = yp[:, np.newaxis] - yp[np.newaxis, :]
     xd = tools.pack_product_array(xd, axis=0)
     yd = tools.pack_product_array(yd, axis=0)
 
-    # Calculate wavelengths and UV place separations                                                                                                 \
-                                                                                                                                                      
+    if frick != None:
+        frick = 800.0 - 400 / 1024.0 * frick
+
+    print "Using %d" % freq
+
     wv = scipy.constants.c * 1e-6 / freq[:, np.newaxis, np.newaxis]
     u = xd[np.newaxis, :, np.newaxis] / wv
     v = yd[np.newaxis, :, np.newaxis] / wv
-    print np.round(u[0, 256:512, 0], 2)
-    print np.round(v[0, 256:512, 0], 2)
 
-    # Construct fringestop phase and set any non CHIME feeds to have zero phase                                                                      \
-                                                                                                                                                      
-    fs_phase = tools.fringestop_phase(ha, _PF_LAT, src._dec, u, v)
+    fs_phase = tools.fringestop_phase(ha, _PF_LAT, src._dec, u, v) 
     fs_phase = np.where(np.isnan(fs_phase), np.zeros_like(fs_phase), fs_phase)
+
 
     return timestream * fs_phase
 
 
-def fringestop_and_sum(fn, feeds, freq, src, transposed=True, return_unfs=False, meridian=False, del_t=750):             
+def fringestop_and_sum(fn, feeds, freq, src, transposed=True, 
+            return_unfs=True, meridian=False, del_t=1500, frick=None):             
     """ Take an input file fn and a set of feeds and return 
     a formed beam on src. 
     """
+
     if transposed is True:
         r = andata.Reader(fn)
         r.freq_sel = freq
@@ -314,14 +574,24 @@ def fringestop_and_sum(fn, feeds, freq, src, transposed=True, return_unfs=False,
         f = h5py.File(fn, 'r')  
         times = f['index_map']['time'].value['ctime']
 
-    print "Read it, bruh"
+    print "Read in data"
 
     # Get transit time for source 
-    src_trans = eph.transit_times(src, times[0])
+    src_trans = eph.transit_times(src, times[0]) 
 
-    # Select +-100 seconds of transit                                                                                                                    
+    del_phi = (src._dec - np.radians(eph.CHIMELATITUDE)) * np.sin(np.radians(1.988))
+    del_phi *= (24 * 3600.0) / (2 * np.pi)
+
+    # Adjust the transit time accordingly                                                                                                            
+    src_trans += del_phi
+
+    # Select +- del_t of transit, accounting for the mispointing                                                                                     
     t_range = np.where((times < src_trans + del_t) & (times > src_trans - del_t))[0]
 
+    times = times[t_range[0]:t_range[-1]]#[offp::2] test
+
+    print "Time range:", times[0], times[-1]
+    
     # Generate correctly ordered corrinputs
     corrinput_real = gen_inp()[0]
     inp = np.array(corrinput_real)
@@ -340,21 +610,28 @@ def fringestop_and_sum(fn, feeds, freq, src, transposed=True, return_unfs=False,
         freq = 800 - 400.0 / 1024 * freq
         freq = np.array([freq])
 
-    times = times[t_range[0]:t_range[-1]]
-#    data -= (data[..., 0] + data[..., -1])[..., np.newaxis] / 2.0
-
-    print "Time range:", t_range[0], t_range[-1]
+#    autos = auto_corrs(256)
+#    offp = (abs(data[:, autos, 0::2]).mean() > (abs(data[:, autos, 1::2]).mean())).astype(int)
+#    data = data[..., offp::2] test
 
     data_unfs = sum_corrs(data.copy(), feeds)
     ra_ = eph.transit_RA(times)
+    ra_2 = nolan_ra(times)
+
+    #ra_ = ra_2.copy()
 
     if meridian is True:
         ra = np.ones_like(ra_) * np.degrees(src._ra)
     else:
         ra = ra_
 
+    print len(inp)
     dfs = tools.fringestop_pathfinder(data.copy(), ra, freq, inp, src)    
-#    dfs2 = fringestop_pathfinder(data.copy(), ra, freq, inp, src)
+    #dfs = fringestop_pathfinder(data.copy(), ra_2, freq, inp, src, frick=frick)
+#    dfs = fringestop_pathfinder(data.copy(), ra_1, freq, inp, src, frick=frick)
+
+#    fp = np.loadtxt('/home/connor/feed_layout_decrease.txt')
+#    PH = fill_nolan(times, src._ra  * 180.0 / np.pi, src._dec * 180.0 / np.pi, fp)
 
     dfs_sum = sum_corrs(dfs, feeds)
 
@@ -362,6 +639,140 @@ def fringestop_and_sum(fn, feeds, freq, src, transposed=True, return_unfs=False,
         return dfs_sum, ra_, dfs, data
     else:
         return dfs_sum, ra_
+
+def find_transit_file(dir_nm, unix_time=None, src=None, trans=True, verbose=True):
+    flist = glob.glob(dir_nm)
+    tdel = []
+    
+    print "Looking at %d files" % len(flist)
+
+    for ii in range(len(flist)):
+
+        if trans is True:
+            try:
+                r = andata.Reader(flist[ii])
+
+                if ii==0 and src != None:
+                    time_trans = eph.transit_times(src, r.time[0])
+                elif unix_time != None:
+                    time_trans = unix_time
+                else:
+                    continue
+
+                tdel.append(np.min(abs(time_trans - r.time)))
+
+                if verbose is True:
+                    print flist[ii]
+                    print "%f hours away \n" % np.min(abs(time_trans - r.time)) / 3600.0
+
+            except (KeyError, IOError):
+                print "That one didn't work"
+
+        elif trans is False:
+
+            try:
+                f = h5py.File(flist[ii], 'r')
+                times = f['index_map']['time'].value['ctime'][0]
+                f.close()
+
+                time_trans = unix_time
+
+                tdel.append(np.min(abs(time_trans - times)))
+
+            except (ValueError, IOError):
+                pass
+
+    tdel = np.array(tdel)
+
+    return flist[np.argmin(tdel)], tdel.min()
+    
+def noise_src_phase(fn_ns_sol, fn_sky_sol, src=eph.CasA, trb=10):
+    """ Get noise source phase at the time sky solution was calculated
+    (e.g. time of CasA transit) and use that as baseline.
+
+    Parameters
+    ----------
+    fn_ns_sol : np.str
+       file name with noise source solution
+    fn_sky_sol : np.str
+       file name with sky solution
+    src : ephemeris.Object
+       object that gave sky solution in fn_sky_sol
+    tbr : np.int
+       time rebin factor
+
+    Returns
+    -------
+    phase solution : array_like
+       (nfeed, nt) real array of phases
+   
+    """
+
+    f = h5py.File(fn_ns_sol, 'r')
+    fsky = h5py.File(fn_sky_sol, 'r')
+
+    gx = fsky['gainsx'][:]
+    gy = fsky['gainsy'][:]
+
+    gains_ns = f['gains'][:]
+
+    feeds = f['channels'][:]
+    freq = f['freq_bins'][:]
+    toff = f['timestamp_off']
+
+    nt = len(toff)
+    nfeed = len(feeds)
+    nfreq = len(freq)
+    
+    toff = toff[::10]
+
+    gains_sky = cp.construct_gain_mat(gx, gy, 64)
+    gains_sky = gains_sky[freq, feeds]
+
+    gains_ns = gains_ns[..., :nt // trb * trb].reshape(nfreq, nfeed, -1, trb).mean(-1)
+    src_trans = eph.transit_times(src, toff[0])
+
+    trans_pix = np.argmin(abs(src_trans - toff))
+    phase = np.angle(gains_ns) - np.angle(gains_ns[..., trans_pix, np.newaxis])
+
+    return np.angle(gains_sky)[:, np.newaxis] + phase 
+
+
+def find_transit(time0='Now', src=eph.CasA):
+    import time
+    
+    if time0 == 'Now':
+        time0 = time.time()
+
+    # Get reference datetime from unixtime
+    dt_now = eph.unix_to_datetime(time0)
+    dt_now = dt_now.isoformat()
+
+    # Only use relevant characters in datetime string
+    dt_str = dt_now.replace("-", "")[:9]
+    dirnm = '/mnt/gong/archive/' + dt_str
+
+    filelist = glob.glob(dirnm + '*/*h5')
+    
+    ff = None
+
+    # Step through each file and find that day's transit
+    for ff in filelist:
+
+        try:
+            andataReader = andata.Reader(ff)
+            acqtimes = andataReader.time
+            trans_time = eph.transit_times(src, acqtimes[0])
+            
+            if (acqtimes[0] < trans_time and acqtimes[-1] > trans_time):
+                print "On ", eph.unix_to_datetime(trans_time)
+                print "foundit in %s \n" % ff
+                break
+
+        except (KeyError, ValueError, IOError):
+            pass
+            
+    return ff
 
 
 flist = [48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 
@@ -387,6 +798,7 @@ flist = [48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59,
          79, 160, 161, 162, 163, 164, 165, 166, 167, 168, 169,
          170, 171, 172, 173, 174, 175, 128, 129, 130, 131, 132, 
          133, 134, 135, 136, 137, 138, 139, 140, 141, 142, 143]
+
 
 
 

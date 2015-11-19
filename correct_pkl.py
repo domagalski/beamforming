@@ -4,26 +4,29 @@ import glob
 import pickle
 
 import misc_data_io as misc
+import ch_util.ephemeris as eph
+import phase_solver_code as pc
+reload(pc)
 
 slot = np.array([4, 2, 16, 14, 3, 1, 15, 13, 8, 6, 12, 10, 7, 5, 11, 9])
 slot_id = slot.repeat(16)
 
-fpga_dict = {'10161420452671572' : 8,
-           '10362099439906844' : 6,
-           '6897813178691612' : 1,
-           '1354900185165844'  : 15,
-           '13759032190185500' : 11,
-           '13774983532556316' : 5,
-           '15780492741586972' : 12,
-           '15808512172929116' : 14, 
-           '20310480648056916' : 13,
-           '2269693859475484'  : 4,
-           '2516293578010644'  : 7,
-           '29389679799218268' : 16,
-           '4521493673160724'  : 2,
-           '6801312918188124'  : 3,
-           '9053112731873364'  : 10,
-           '9192752332517468'  : 9}
+fpga_dict = {'8': 8,
+           '6' : 6,
+           '1'  : 1,
+           '3' : 3,
+           '11' : 11,
+           '5' : 5,
+           '12' : 12,
+           '14' : 14,
+           '13' : 13,
+           '4'  : 4,
+           '7'  : 7,
+           '16' : 16,
+           '2'  : 2,
+           '15' : 15,
+           '10'  : 10,
+           '9'  : 9}
 
 fpga_dict2  = {'0008': 16,
               '0014': 14,
@@ -42,10 +45,11 @@ fpga_dict2  = {'0008': 16,
               '0063': 7,
               '0068': 1}
 
+
 fpga_list = ['10161420452671572',
            '10362099439906844',
            '6897813178691612',
-           '1354900185165844',
+           '20522120145121364',
            '13759032190185500',
            '13774983532556316',
            '15780492741586972',
@@ -55,9 +59,11 @@ fpga_list = ['10161420452671572',
            '2516293578010644',
            '29389679799218268',
            '4521493673160724',
-           '6801312918188124',
-           '9053112731873364',
-           '9192752332517468'] 
+           '31710750469369940',
+           '7019893205381148',
+           '9192752332517468']
+
+fpga_list = ['1','2','3','4','5','6','7','8','9','10','11','12','13','14','15','16']
 
 
 def read_pkl(fn):
@@ -70,9 +76,28 @@ def write_pkl(fnout, data):
      pickle.dump(data, output)
      output.close()
 
-def phase_mult(data_pkl, phase, inp):
- 
+def phase_mult_remove_original_phase(data_pkl, phase, inp):
+
+     phase[np.isnan(phase)] = 0.0
+
+     # Force the pkl carrier to be purely Real
+     data_pkl[inp][1][0] *= np.exp(-1j * np.angle(data_pkl[inp][1][0]))
+
+     # Now remove instrumental phase from carrier pkl 
      data_pkl[inp][1][0] *= np.exp(-1j * phase)
+     data_pkl[inp][1][0] = np.round(data_pkl[inp][1][0].real)\
+         + 1j * np.round(data_pkl[inp][1][0].imag)
+
+     assert abs(data_pkl[inp][1][0].real).all() < 32767
+     assert abs(data_pkl[inp][1][0].imag).all() < 32767
+
+     return list(data_pkl[inp][1][0])
+
+def phase_mult(data_pkl, phase, inp):
+     
+     data_pkl[inp][1][0] *= np.exp(-1j * phase)
+
+     # Seems to have been changed from -phi to +phi already
      data_pkl[inp][1][0] = np.round(data_pkl[inp][1][0].real)\
          + 1j * np.round(data_pkl[inp][1][0].imag)
 
@@ -83,7 +108,7 @@ def apply_gain(data_pkl, gains, N):
      phase_arr = np.angle(gains)
 
      for ii in range(N):
-          data_pkl[ii][1][0] = (phase_mult(data_pkl, phase_arr[:, ii], ii))
+          data_pkl[ii][1][0] = (phase_mult_remove_original_phase(data_pkl, phase_arr[:, ii], ii))
 
      return data_pkl
 
@@ -116,47 +141,40 @@ def this(infile0, infile1, data, freq=range(1024)):
 
      return data_ng
 
-def construct_gain_mat_fromfile(infile, nch, nfreq=1024, nfeed=256):
-     gain_mat = np.zeros([nfreq, nfeed], np.complex128)
-
-     nf = nfreq // nch
-
-     for nu in range(nch):
-          g = h5py.File(infile + np.str(nu) + '.hdf5', 'r')
-          gx = g['ax'][:]
-          gy = g['ay'][:]
-
-          print range(nf * nu, nf*(nu+1))
-
-          gain_mat[nf*nu:nf*(nu+1), :64] = gx[:, :64, 8:14].mean(-1)
-          gain_mat[nf*nu:nf*(nu+1), 128:128+64] = gx[:, 64:, 8:14].mean(-1)
-
-          gain_mat[nf*nu:nf*(nu+1), 64:128] = gy[:, :64, 8:14].mean(-1)
-          gain_mat[nf*nu:nf*(nu+1), 128+64:] = gy[:, 64:, 8:14].mean(-1)
-
-          print nu
-
-     return gain_mat
 
 def construct_gain_mat(gx, gy, nch, nfreq=1024, nfeed=256):
+     """ Take gains for x and y feeds and construct 
+     full gain matrix in CHIME i.d. ordering
+
+     Parameters:
+     ----------
+     gx : 
+     
+     gy : 
+     
+     nch : int
+         Number of chunks
+
+     Returns:
+     -------
+     gain_mat : array_like
+        (nfreq, nfeed) complex array with gains
+     """
      gain_mat = np.zeros([nfreq, nfeed], np.complex128)
 
      nf = nfreq // nch
 
      for nu in range(nch):
 
-          print range(nf * nu, nf*(nu+1))
 
-          gain_mat[nf*nu:nf*(nu+1), :64] = gx[:, :64, 8:14].mean(-1)
-          gain_mat[nf*nu:nf*(nu+1), 128:128+64] = gx[:, 64:, 8:14].mean(-1)
+          gain_mat[nf*nu:nf*(nu+1), :64] = gx[nf*nu:nf*(nu+1), :64]#.mean(-1)
+          gain_mat[nf*nu:nf*(nu+1), 128:128+64] = gx[nf*nu:nf*(nu+1), 64:]#.mean(-1)
 
-          gain_mat[nf*nu:nf*(nu+1), 64:128] = gy[:, :64, 8:14].mean(-1)
-          gain_mat[nf*nu:nf*(nu+1), 128+64:] = gy[:, 64:, 8:14].mean(-1)
+          gain_mat[nf*nu:nf*(nu+1), 64:128] = gy[nf*nu:nf*(nu+1), :64]#.mean(-1)
+          gain_mat[nf*nu:nf*(nu+1), 128+64:] = gy[nf*nu:nf*(nu+1), 64:]#.mean(-1)
 
-          print nu
 
      return gain_mat
-
 
 def avg_channels(gain_mat, left=14, right=16):
      # Note hack to make them fit. 16::16 is one shorter than 14::16
@@ -173,9 +191,10 @@ def avg_channels(gain_mat, left=14, right=16):
           
 
 def gain_pkl_mat(infile):
-     """ Read in gain*pkl filies and construct an ordered
+     """ Read in gain*pkl files and construct an ordered
      gain matrix out of them.
      """
+
      GGpkl = np.zeros([1024, 256], np.complex128)
 
      for fpga_name in fpga_list:
@@ -184,35 +203,171 @@ def gain_pkl_mat(infile):
 
           feeds = np.where(slot_id==x)[0]#[::-1]                                                           
           feeds = feeds[ch_map]
-
+          
           for i in range(16):
                GGpkl[:, feeds[i]] = data_pkl[i][1][0]
-               print feeds[i]
 
      return GGpkl
+
+def check_gain_solution(infile_pkl, infile_h5, feeds, src, freq=305, transposed=True):
+
+    dfs = pc.fringestop_and_sum(infile_h5, feeds,
+                   freq, src, transposed=transposed,
+                                return_unfs=True, meridian=False)[-2]
+
+    dfs = dfs[0].transpose()
+    ntimes = dfs.shape[0]
+
+#    Gpkl = gain_pkl_mat('./inp_gains/gains_slot')
+#    Gpkl = Gpkl[freq]
+
+    f = h5py.File(infile_h5, 'r')                                                                                              
+
+    if transposed is True:
+         g = f['gain_coeff'][freq, :, 0]
+         Gh5 = g['r'] + 1j * g['i']
+    else:
+         g = f['gain_coeff'][0, freq]
+         Gh5 = g['r'] + 1j * g['i']
+    
+#    for i in range(len(feeds)):
+#         for j in range(i, len(feeds)):
+#              dfs[:, misc.feed_map(i, j, 256)] *= np.exp(-1j * np.angle(Gh5[i] * np.conj(Gh5[j])))
+              #dfs[:, misc.feed_map(i, j, 256)] *= np.exp(1j * np.angle(Gpkl[i] * np.conj(Gpkl[j])))
+
+    return dfs, Gh5
+
+def fs_and_correct_gains(fn_h5, fn_gain, src, freq=305, \
+                              del_t = 900, transposed=True, remove_fpga_phase=True, remove_instr=True,
+                         remove_fpga=False):
+
+    dfs = pc.fs_from_file(fn_h5, freq, src, del_t=1800, transposed=transposed)
+
+    ntimes = dfs.shape[0]
+
+    fg = h5py.File(fn_gain, 'r')
+
+    gx = fg['gainsx']
+    gy = fg['gainsy']
+
+    gain_mat = construct_gain_mat(gx, gy, 64)[freq]
+
+    f = h5py.File(fn_h5, 'r')
+    feeds = range(256)
+
+    # Skip loading the gains and applying them if both are False
+    if (remove_fpga is False) and (remove_instr is False):
+         return dfs
+
+    if transposed is True:
+         g = f['gain_coeff'][freq, :, 0]
+         Gh5 = g['r'] + 1j * g['i']
+    else:
+         g = f['gain_coeff'][0, freq]
+         Gh5 = g['r'] + 1j * g['i']
+
+    print "doing the big loop"
+
+    for fi, nu in enumerate(freq):
+         for i in range(len(feeds)):
+              for j in range(i, len(feeds)):
+
+                   if remove_fpga is True:
+                        dfs[:, misc.feed_map(i, j, 256)] /= np.conj((Gh5[fi, i]) * np.conj(Gh5[fi, j]))
+
+                   if remove_fpga_phase is True:
+                        # Remove fpga phases written in .h5 file
+                        dfs[:, misc.feed_map(i, j, 256)] *= \
+                            np.exp(+1j * np.angle(Gh5[fi, i] * np.conj(Gh5[fi, j])))
+
+                   if remove_instr is True:
+                        # Apply gains solved for 
+                        dfs[:, misc.feed_map(i, j, 256)] \
+                            *= np.exp(-1j * np.angle(gain_mat[fi, i] * np.conj(gain_mat[fi, j])))
+    
+    print "Summed h5 gains: ", Gh5.sum()
+
+    return dfs
+
+"""
+def check_gain_solution(infile_pkl, infile_h5, freq=305, transposed=True):
+    Gpkl = gain_pkl_mat(infile_pkl)
+
+    f = h5py.File(infile_h5, 'r')
+     
+    if transposed is True:
+        r = andata.Reader(fn)
+        r.freq_sel = freq
+        X = r.read()
+        times = r.time
+
+        g = f['gain_coeff'][0]               
+    else:
+        f = h5py.File(fn, 'r')  
+        times = f['index_map']['time'].value['ctime']
+     
+        g = f['gain_coeff'][..., 0]
+        
+    src_trans = eph.transit_times(src, times[0])
+
+     t_range = np.where((times < src_trans + del_t) & (times > src_trans - del_t))[0]
+     inp = pc.gen_inp()[0]
+
+     data = X.vis[:, :, t_range[0]:t_range[-1]]
+     freq = X.freq
+
+     times = times[t_range[0]:t_range[-1]]
+
+     ra = eph.transit_RA(times)
+
+     dfs = fringestop_pathfinder(data.copy(), ra, freq, inp, src)
+
+     # Order of real / imag seems to be switched. Must correct for this.
+     Gh5 = g['i'] + 1j * g['r'] 
+"""
+
+def compare_pkl_to_h5(fn, input_pkls, trans=False):
+     f = h5py.File(fn, 'r')
+
+     if trans is False:
+          g = f['gain_coeff'][0]
+     else:
+          g = f['gain_coeff'][..., 0]
+
+     Gains = g['r'] + 1j * g['i']
+     
+     phases_h5 = np.angle(Gains)
+     
+     Gain_pkl = gain_pkl_mat(input_pkls)
+
+     for ii in range(256):
+          print np.degrees(np.angle(Gain_pkl[305, ii])) + np.degrees(np.angle(Gains[305, ii]))
+     
+     return data_pkl
+
+ch_map = [12, 13, 14, 15, 8, 9, 10, 11, 4, 5, 6, 7, 0, 1, 2, 3]
+#fn = '/mnt/gamelan/untransposed/20150903T172424Z_pathfinder_corr/00000002_0000.h5'  
+#compare_pkl_to_h5(fn, './inp_gains/gains_', trans=False)
+    
 
 def do_it_all(Gains, input_pkls):
 
      for fpga_name in fpga_list:
-          data_pkl = read_pkl(infile + fpga_name + '.pkl')
+          data_pkl = read_pkl(input_pkls + fpga_name + '.pkl')
           x=fpga_dict[fpga_name]
      
-          feeds = np.where(slot_id==x)[0]#[::-1]
+          feeds = np.where(slot_id==x)[0]
           feeds = feeds[ch_map]
           g = Gains[:, feeds]
-
-          print feeds
 
           data_pkl = apply_gain(data_pkl, g, 16)     
 
           # Write pickle
-          outfile =  '/home/chime/gains_jun19/gains_' + fpga_name + '.pkl'
-          outfile = './outp_gains/gains_' + fpga_name + '.pkl'
+          outfile = './outp_gains/gains_slot' + fpga_name + '.pkl'
           write_pkl(outfile, data_pkl)
+
           print "=================================="
-
-          print "Wrote to ", outfile 
-
+          print "Wrote to %s" % outfile 
           print "=================================="
 
           print ""
@@ -232,15 +387,13 @@ if __name__=='__main__':
       #Gains = construct_gain_mat('transj22_cygx', 64)
       #Gains = avg_channels(Gains)  
 
-     for fpga_name in fpga_list:
+      for fpga_name in fpga_list:
           data_pkl = read_pkl(infile + fpga_name + '.pkl')
           x=fpga_dict[fpga_name]
      
           feeds = np.where(slot_id==x)[0]#[::-1]
           feeds = feeds[ch_map]
           g = Gains[:, feeds]
-
-          print feeds
 
           data_pkl = apply_gain(data_pkl, g, 16)     
 
