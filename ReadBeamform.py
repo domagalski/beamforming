@@ -1,5 +1,4 @@
 import numpy as np 
-#import dpkt
 
 class ReadBeamform:
      """ A class to read, correlate, and process CHIME vdif data. 
@@ -228,14 +227,61 @@ class ReadBeamform:
           """ Takes two time columns of header (seconds since
           J2000 and packet number) and constructs time array in
           seconds
+
+          Parameters
+          ----------
+          header : 
+
+          seq : boolean
+               If True, use fpga sequence number. Else use vdif timestamp
           """
           times = header[:, -3]/np.float(self.nmm) + header[:, -2].astype(np.float)
-          
+
           if seq is True:
                seq = header[:, -1] 
                times = (seq - seq[0]) / 625.0**2 + times[0]
 
           return self.J2000_to_unix(times)
+
+     def correlate_xy(self, data_r, data_i, header, indpol0, indpol1):
+
+          seq0 = header[indpol0, -1]
+          seq1 = header[indpol1, -1]
+#          seq1 = seq0.copy()
+
+          XYreal = []
+          XYimag = []
+          
+          seq_xy = []
+
+          data_rp0 = data_r[indpol0]
+          data_ip0 = data_i[indpol0]
+
+          data_rp1 = data_r[indpol1]
+          data_ip1 = data_i[indpol1]
+
+          for t0, tt in enumerate(seq0):
+
+               t1 = np.where(seq1 == tt)[0]
+
+               if len(t1) < 1:
+                    continue
+
+               seq_xy.append(tt)
+
+               xyreal = data_rp0[t0] * data_rp1[t1] + data_ip0[t0] * data_ip1[t1]
+               xyimag = data_ip0[t0] * data_rp1[t1] - data_rp0[t0] * data_ip1[t1]
+
+               XYreal.append(xyreal)
+               XYimag.append(xyimag)
+
+          times = header[indpol0, -3]/np.float(self.nmm) 
+          times += header[indpol0, -2].astype(np.float)
+
+          tt_xy = (seq_xy - seq_xy[0]) / 625.0**2 + times[0]
+
+          return XYreal, XYimag, self.J2000_to_unix(tt_xy)
+
 
      def correlate_and_fill(self, data, header, trb=1):
           """ Take header and data arrays and reorganize
@@ -259,70 +305,68 @@ class ReadBeamform:
           """
 
           slots = set(header[:, 2])
+
           print "Data has", len(slots), "slots: ", slots
 
-          data_corr = data[:, 0::2]**2 + data[:, 1::2]**2
-          data2 = data.reshape(-1, 625, 8, 2).transpose((0, 2, 1, 3))
+          data_real = data[:, 0::2]
+          data_imag = data[:, 1::2]
+
+          data_corr = data_real**2 + data_imag**2
           data_corr = data_corr.reshape(-1, 625, 8).mean(1)
 
+          data_real = data_real.reshape(-1, 625, 8).transpose((0, 2, 1))
+          data_imag = data_imag.reshape(-1, 625, 8).transpose((0, 2, 1))
 
           arr = np.zeros([data_corr.shape[0] / self.nfr / 2 / len(slots) + 256
-                                   , 2*self.npol, self.nfreq], np.float32)
+                                   , 2*self.npol, self.nfreq], np.float64)
+
           tt = np.zeros([data_corr.shape[0] / self.nfr / 2 / len(slots) + 256
-                                   , self.npol, self.nfreq], np.float64)
+                                   , 2*self.npol, self.nfreq], np.float64)
 
           for qq in range(self.nfr):
+
                for ii in range(16):
+
                     fin = ii + 16 * qq + 128 * np.arange(8)
 
-                    indpol0 = np.where((header[:, 0]==0) & (header[:, 1]==qq) & (header[:, 2]==ii))[0]
-                    indpol1 = np.where((header[:, 0]==1) & (header[:, 1]==qq) & (header[:, 2]==ii))[0]
+                    indpol0 = np.where((header[:, 0]==0) & \
+                                            (header[:, 1]==qq) & (header[:, 2]==ii))[0]
+
+                    indpol1 = np.where((header[:, 0]==1) & \
+                                            (header[:, 1]==qq) & (header[:, 2]==ii))[0]
                     
                     inl = min(len(indpol0), len(indpol1))
 
+                    if inl < 1:
+                         continue
+
                     indpol0 = indpol0[:inl]
                     indpol1 = indpol1[:inl]
+                    
+                    XYreal, XYimag, tt_xy = self.correlate_xy(
+                                 data_real, data_imag, header, indpol0, indpol1)
 
-                    xyreal = data2[indpol0,..., 0] * data2[indpol1,..., 0] \
-                                    + data2[indpol0,..., 1] * data2[indpol1,..., 1]
-
-                    xyimag = data2[indpol0,..., 1] * data2[indpol1,..., 0] \
-                                    - data2[indpol0,..., 0] * data2[indpol1,..., 1]
-
-                    xyreal = xyreal.mean(-1)
-                    xyimag = xyimag.mean(-1)
-
-                    arr[:inl, 1, fin] = xyreal
-                    arr[:inl, 2, fin] = xyimag
+                    XYreal = np.concatenate(XYreal, axis=0)
+                    XYimag = np.concatenate(XYimag, axis=0)
 
                     arr[:len(indpol0), 0, fin] = data_corr[indpol0]
                     arr[:len(indpol1), 3, fin] = data_corr[indpol1]
 
+                    arr[:len(XYreal), 1, fin] = XYreal.mean(-1)
+                    arr[:len(XYimag), 2, fin] = XYimag.mean(-1)
+
+                    tt[:len(tt_xy), 1, fin] = np.array(tt_xy).repeat(8).reshape(-1, 8)
+                    tt[:len(tt_xy), 2, fin] = tt[:len(tt_xy), 1, fin].copy()
+
                     if (len(indpol0) >= 1) and (len(indpol0) < arr.shape[0]): 
-                         tt[:inl, 0, fin] = self.get_times(header[indpol0]).repeat(8).reshape(-1, 8)
+                         tt[:len(indpol0), 0, fin] = self.get_times(\
+                                         header[indpol0]).repeat(8).reshape(-1, 8)
 
                     if (len(indpol1) >= 1) and (len(indpol1) < arr.shape[0]):
-                         tt[:inl, 1, fin] = self.get_times(header[indpol1]).repeat(8).reshape(-1, 8)
+                         tt[:len(indpol1), 3, fin] = self.get_times(\
+                                         header[indpol1]).repeat(8).reshape(-1, 8)
 
-                    
-                    """
-                    for pp in range(self.npol):
-                         ind = np.where((header[:, 0]==pp) & (header[:, 1]==qq) & (header[:, 2]==ii))[0]
-                         
-                         if len(ind) > arr.shape[0]:
-                              print "Skipping, ind is too short"
-                              print len(ind), arr.shape
 
-                         if (len(ind) >= 1) and (len(ind) < arr.shape[0]):
-
-                              arr[:len(ind), pp, fin] = data_corr[ind]
-                              
-                              tt[:len(ind), pp, fin] = self.get_times(header[ind]).repeat(8).reshape(-1, 8)
-                              
-                              tt[len(ind):, pp, fin] = tt[len(ind)-1, pp, fin]
-                    """
-
-          print arr.sum(0).sum(-1)
           return arr, tt
 
 
