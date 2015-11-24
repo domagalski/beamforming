@@ -1,5 +1,20 @@
 import numpy as np 
 
+try:
+    # do *NOT* use on-disk cache; blue gene doesn't work; slower anyway
+    # import pyfftw
+    # pyfftw.interfaces.cache.enable()
+    from pyfftw.interfaces.scipy_fftpack import (rfft, rfftfreq,
+                                                 fft, ifft, fftfreq, fftshift)
+    _fftargs = {'threads': int(os.environ.get('OMP_NUM_THREADS', 2)),
+                'planner_effort': 'FFTW_ESTIMATE'}
+except(ImportError):
+    print("Consider installing pyfftw: https://github.com/hgomersall/pyFFTW")
+    # use FFT from scipy, since unlike numpy it does not cast up to complex128
+    from scipy.fftpack import rfft, rfftfreq, fft, ifft, fftfreq, fftshift
+    _fftargs = {}
+
+
 class ReadBeamform:
      """ A class to read, correlate, and process CHIME vdif data. 
      """
@@ -13,8 +28,13 @@ class ReadBeamform:
           self.npol = 2
           self.nfq = 8 # Number of frequencies in each frame
           self.nfreq = 1024 # Total number of freq
-          self.nmm = 625
+          self.nperpacket = 625 # Time samples per packet
           self.frame_size = 5032 # Frame size in bytes
+          self.freq = np.linspace(800, 400, 1024) * 1e6 # Frequency array in Hz
+          self.dt = 1. / (800e6) # Sample rate pre-channelization
+          self.dispersion_delay_constant = 4149. # u.s * u.MHz**2 * u.cm**3 / u.pc
+          self.ntint = 2**18
+
 
      @property
      def header_dict(self):
@@ -235,7 +255,7 @@ class ReadBeamform:
           seq : boolean
                If True, use fpga sequence number. Else use vdif timestamp
           """
-          times = header[:, -3]/np.float(self.nmm) + header[:, -2].astype(np.float)
+          times = header[:, -3] / np.float(self.nmpp) + header[:, -2].astype(np.float)
 
           if seq is True:
                seq = header[:, -1] 
@@ -243,7 +263,23 @@ class ReadBeamform:
 
           return self.J2000_to_unix(times)
 
-     def correlate_xy(self, data_r, data_i, header, indpol0, indpol1):
+     def get_fft_freq(self, ntint, DM):
+          dtsample = 2 * self.nfreq * self.dt
+
+          fcoh = self.freq - fftfreq(
+                    ntint, dtsample)[:, np.newaxis]
+     
+          _fref = self.freq[np.newaxis]
+
+          dang = (self.dispersion_delay_constant * DM * fcoh *
+                              (1./_fref - 1./fcoh)**2) 
+
+          dd_coh = np.exp(-1j * dang).astype(np.complex64)
+
+          return dd_coh
+
+
+     def correlate_xy(self, data_pol0, data_pol1, header, indpol0, indpol1):
 
           seq0 = header[indpol0, -1]
           seq1 = header[indpol1, -1]
@@ -254,11 +290,11 @@ class ReadBeamform:
           
           seq_xy = []
 
-          data_rp0 = data_r[indpol0]
-          data_ip0 = data_i[indpol0]
+          data_rp0 = data_pol0.real
+          data_ip0 = data_pol0.imag
 
-          data_rp1 = data_r[indpol1]
-          data_ip1 = data_i[indpol1]
+          data_rp1 = data_pol1.real
+          data_ip1 = data_pol1.imag
 
           for t0, tt in enumerate(seq0):
 
@@ -275,13 +311,12 @@ class ReadBeamform:
                XYreal.append(xyreal)
                XYimag.append(xyimag)
 
-          times = header[indpol0, -3]/np.float(self.nmm) 
+          times = header[indpol0, -3] / np.float(self.nperpacket) 
           times += header[indpol0, -2].astype(np.float)
 
           tt_xy = (seq_xy - seq_xy[0]) / 625.0**2 + times[0]
 
           return XYreal, XYimag, self.J2000_to_unix(tt_xy)
-
 
      def correlate_and_fill(self, data, header, trb=1):
           """ Take header and data arrays and reorganize
@@ -308,14 +343,14 @@ class ReadBeamform:
 
           print "Data has", len(slots), "slots: ", slots
 
-          data_real = data[:, 0::2]
-          data_imag = data[:, 1::2]
 
-          data_corr = data_real**2 + data_imag**2
-          data_corr = data_corr.reshape(-1, 625, 8).mean(1)
+          data = data[:, ::2] + 1j * data[:, 1::2]
 
-          data_real = data_real.reshape(-1, 625, 8).transpose((0, 2, 1))
-          data_imag = data_imag.reshape(-1, 625, 8).transpose((0, 2, 1))
+          data_corr = data.real**2 + data.imag**2
+          data_corr = data_corr.reshape(-1, self.nperpacket, 8).mean(1)
+
+          data_real = data.real.reshape(-1, self.nperpacket, 8).transpose((0, 2, 1))
+          data_imag = data.imag.reshape(-1, self.nperpacket, 8).transpose((0, 2, 1))
 
           arr = np.zeros([data_corr.shape[0] / self.nfr / 2 / len(slots) + 256
                                    , 2*self.npol, self.nfreq], np.float64)
@@ -344,7 +379,7 @@ class ReadBeamform:
                     indpol1 = indpol1[:inl]
                     
                     XYreal, XYimag, tt_xy = self.correlate_xy(
-                                 data_real, data_imag, header, indpol0, indpol1)
+                                 data[indpol0], data[indpol1], header, indpol0, indpol1)
 
                     XYreal = np.concatenate(XYreal, axis=0)
                     XYimag = np.concatenate(XYimag, axis=0)
@@ -368,6 +403,120 @@ class ReadBeamform:
 
 
           return arr, tt
+
+
+     def correlate_and_fill_cohdd(self, data, header, dm, trb=1):
+          """ Take header and data arrays and reorganize
+          to produce the full time, pol, freq array after
+          coherently dedispersing timestream
+
+          Parameters
+          ----------
+          data : array_like
+               (nt, ntfr * 2 * self.nfq) array of nt packets
+          header : array_like
+               (nt, 5) array, see self.parse_header
+          dm : np.float
+               dispersion measure pc cm**-3
+          ntimes : np.int
+               Number of packets to use
+
+          Returns 
+          -------
+          arr : array_like (duhh) np.float64
+               (ntimes * ntfr, npol, nfreq) array of autocorrelations
+          tt : array_like 
+               Same shape as arr, since each frequency has its own time vector
+          """
+
+          slots = set(header[:, 2])
+
+          print "Data has", len(slots), "slots: ", slots
+
+          data = data[:, ::2] + 1j * data[:, 1::2]
+
+
+          arr = np.zeros([self.nperpacket * (data_corr.shape[0] / self.nfr / 2 / len(slots) + 256)
+                                   , 2*self.npol, self.nfreq], np.float32)
+
+          tt = np.zeros([self.nperpacket * (data_corr.shape[0] / self.nfr / 2 / len(slots) + 256)
+                                   , 2*self.npol, self.nfreq], np.float32)
+
+          # Precalculate the coh dedispersion shift phases
+          dd_coh = self.get_fft_freq(self.ntint, DM)
+
+          for qq in range(self.nfr):
+
+               for ii in range(16):
+
+                    fin = ii + 16 * qq + 128 * np.arange(8)
+
+                    indpol0 = np.where((header[:, 0]==0) & \
+                                            (header[:, 1]==qq) & (header[:, 2]==ii))[0]
+
+                    indpol1 = np.where((header[:, 0]==1) & \
+                                            (header[:, 1]==qq) & (header[:, 2]==ii))[0]
+                    
+                    inl = min(len(indpol0), len(indpol1))
+                    inm = max(len(indpol0), len(indpol1))
+
+                    if inl < 1:
+                         continue
+
+                    seq0 = header[indpol0, -1]
+                    seq1 = header[indpol1, -1]
+
+                    # Make sure we can safely FFT for coherent dedispersion
+                    if not (np.diff(seq0)==self.nperpacket).all():
+                         print "Dropped packet, shouldn't fft"
+
+                         continue
+
+                    data0 = data[indpol0].reshape(-1, 8)[:self.ntint]
+                    data1 = data[indpol1].reshape(-1, 8)[:self.ntint]
+
+                    data_dechan0 = fft(data0, axis=0, overwrite_x=True)
+                    data_dechan1 = fft(data1, axis=0, overwrite_x=True)
+
+                    data_dechan0 *= dd_coh[:, fin]
+                    data_dechan1 *= dd_coh[:, fin]
+
+                    data0 = ifft(data_dechan0, axis=0, overwrite_x=True)
+                    data1 = ifft(data_dechan1, axis=0, overwrite_x=True)
+
+                    data_corr0 = data0.real**2 + data0.imag**2
+                    data_corr1 = data1.real**2 + data1.imag**2
+
+                    arr[:len(indpol0), 0, fin] = data_corr0
+                    arr[:len(indpol1), 3, fin] = data_corr1
+
+                    del data_corr0, data_corr1
+
+                    indpol0 = indpol0[:inl]
+                    indpol1 = indpol1[:inl]
+
+                    XYreal, XYimag, tt_xy = self.correlate_xy(
+                                 data0, data1, header, indpol0, indpol1)
+
+                    XYreal = np.concatenate(XYreal, axis=0)
+                    XYimag = np.concatenate(XYimag, axis=0)
+
+                    arr[:len(XYreal), 1, fin] = XYreal
+                    arr[:len(XYimag), 2, fin] = XYimag
+
+                    tt[:len(tt_xy), 1, fin] = np.array(tt_xy).repeat(8).reshape(-1, 8)
+                    tt[:len(tt_xy), 2, fin] = tt[:len(tt_xy), 1, fin].copy()
+
+                    if (len(indpol0) >= 1) and (len(indpol0) < arr.shape[0]): 
+                         tt[:len(indpol0), 0, fin] = self.get_times(\
+                                         header[indpol0]).repeat(8).reshape(-1, 8)
+
+                    if (len(indpol1) >= 1) and (len(indpol1) < arr.shape[0]):
+                         tt[:len(indpol1), 3, fin] = self.get_times(\
+                                         header[indpol1]).repeat(8).reshape(-1, 8)
+
+
+          return arr[:], tt
 
 
      def correlate_and_reorg(self, header, data):
