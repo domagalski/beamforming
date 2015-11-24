@@ -21,9 +21,9 @@ fold_full = True
 
 npol = 2
 nfreq = 1024
-trb = 1500 # Factor to rebin data array by
-f_start = 4500
-nfiles = 1500 #25 # Total number of files to us
+trb = 2000 # Factor to rebin data array by
+f_start = 4250
+nfiles = 2000 #25 # Total number of files to us
 f_step = 1 # step between files
 n_save = 30 # Save down every n_save files
 
@@ -56,6 +56,36 @@ def write_h5(outfile, arr, tt_tot):
      f.close()
      
      print "Wrote to: ", outfile
+
+def amalgamate(outfile):
+     list_corr = glob.glob(outfile + '*.hdf5')
+     list_corr = list_corr[:]
+     list_corr.sort()
+
+     Arr = []
+     TT = []
+
+     for fnm in list_corr:
+          ff = h5py.File(fnm, 'r')
+
+          arr = ff['arr'][:]
+#          tt = ff['times'][:]
+
+          Arr.append(arr)
+#          TT.append(tt)
+     
+     Arr = np.concatenate(Arr, axis=-2)
+#     TT = np.concatenate(TT, axis=-2)
+
+     print "Writing to %s" % (outfile + 'full.hdf5')
+
+     g = h5py.File(outfile + 'full.hdf5', 'w')
+     g.create_dataset('arr', data=Arr)
+#     g.create_dataset('times', data=TT)
+     g.close()
+
+if reamalgamate is True and fold_full is True:
+     amalgamate(outfile)
 
 header_acc = []
 data_acc = []
@@ -127,10 +157,6 @@ for ii in range(f_start, f_start + nfiles, f_step):
           arr = np.concatenate(arr).transpose()
           times = np.concatenate(tt_tot).transpose()
 
-
-          # Want to make times a perfect replica of arr
-#          times = times.repeat(2, axis=1)[:, :4]
-
           # Instance class with full array, but a dummy time vector
           PulsarPipeline = chp.PulsarPipeline(arr, times[0, 0])
 
@@ -161,32 +187,7 @@ for ii in range(f_start, f_start + nfiles, f_step):
 
 del arr, tt_tot
 
-if reamalgamate is True and fold_full is True:
-     list_corr = glob.glob(outfile + '*.hdf5')
-     list_corr = list_corr[:]
-     list_corr.sort()
 
-     Arr = []
-     TT = []
-
-     for fnm in list_corr:
-          ff = h5py.File(fnm, 'r')
-
-          arr = ff['arr'][:]
-#          tt = ff['times'][:]
-
-          Arr.append(arr)
-#          TT.append(tt)
-     
-     Arr = np.concatenate(Arr, axis=-2)
-#     TT = np.concatenate(TT, axis=-2)
-
-     print "Writing to %s" % (outfile + 'full.hdf5')
-
-     g = h5py.File(outfile + 'full.hdf5', 'w')
-     g.create_dataset('arr', data=Arr)
-#     g.create_dataset('times', data=TT)
-     g.close()
 
 def dedisperse_ts():
      freq = np.linspace(800, 400, 1024)
