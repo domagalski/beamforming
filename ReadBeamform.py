@@ -514,7 +514,7 @@ class ReadBeamform:
                     if not (np.diff(seq0)==self.nperpacket).all():
                          print "Dropped packet, shouldn't fft"
                          continue
-                    """ 
+
 
 
 #                    data0 = data0[:self.ntint]
@@ -531,7 +531,7 @@ class ReadBeamform:
 
                     data0 = ifft(data_dechan0, axis=0, overwrite_x=True)
                     data1 = ifft(data_dechan1, axis=0, overwrite_x=True)
-
+                    """
                     data_corr0 = data0.real**2 + data0.imag**2
                     data_corr1 = data1.real**2 + data1.imag**2
 
