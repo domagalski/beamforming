@@ -523,8 +523,8 @@ class ReadBeamform:
 
                     print data0.shape, data_dechan0.shape, dd_coh0.shape
 
-                    data_dechan0 *= dd_coh0[:, fin]
-                    data_dechan1 *= dd_coh1[:, fin]
+                    data_dechan0 *= dd_coh0
+                    data_dechan1 *= dd_coh1
 
                     data0 = ifft(data_dechan0, axis=0, overwrite_x=True)
                     data1 = ifft(data_dechan1, axis=0, overwrite_x=True)
