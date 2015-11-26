@@ -1,3 +1,5 @@
+import os
+
 import numpy as np 
 
 try:
@@ -33,7 +35,7 @@ class ReadBeamform:
           self.freq = np.linspace(800, 400, 1024) * 1e6 # Frequency array in Hz
           self.dt = 1. / (800e6) # Sample rate pre-channelization
           self.dispersion_delay_constant = 4149. # u.s * u.MHz**2 * u.cm**3 / u.pc
-          self.ntint = 2**18
+          self.ntint = 2**13
 
 
      @property
@@ -255,7 +257,7 @@ class ReadBeamform:
           seq : boolean
                If True, use fpga sequence number. Else use vdif timestamp
           """
-          times = header[:, -3] / np.float(self.nmpp) + header[:, -2].astype(np.float)
+          times = header[:, -3] / np.float(self.nperpacket) + header[:, -2].astype(np.float)
 
           if seq is True:
                seq = header[:, -1] 
@@ -263,7 +265,7 @@ class ReadBeamform:
 
           return self.J2000_to_unix(times)
 
-     def get_fft_freq(self, ntint, DM):
+     def get_fft_freq(self, ntint, dm):
           dtsample = 2 * self.nfreq * self.dt
 
           fcoh = self.freq - fftfreq(
@@ -271,7 +273,7 @@ class ReadBeamform:
      
           _fref = self.freq[np.newaxis]
 
-          dang = (self.dispersion_delay_constant * DM * fcoh *
+          dang = (self.dispersion_delay_constant * dm * fcoh *
                               (1./_fref - 1./fcoh)**2) 
 
           dd_coh = np.exp(-1j * dang).astype(np.complex64)
@@ -283,7 +285,6 @@ class ReadBeamform:
 
           seq0 = header[indpol0, -1]
           seq1 = header[indpol1, -1]
-#          seq1 = seq0.copy()
 
           XYreal = []
           XYimag = []
@@ -360,7 +361,7 @@ class ReadBeamform:
 
           for qq in range(self.nfr):
 
-               for ii in range(16):
+               for ii in slots:
 
                     fin = ii + 16 * qq + 128 * np.arange(8)
 
@@ -381,14 +382,15 @@ class ReadBeamform:
                     XYreal, XYimag, tt_xy = self.correlate_xy(
                                  data[indpol0], data[indpol1], header, indpol0, indpol1)
 
-                    XYreal = np.concatenate(XYreal, axis=0)
-                    XYimag = np.concatenate(XYimag, axis=0)
+                    XYreal = np.concatenate(XYreal, axis=0).reshape(-1, self.nperpacket, 8)
+                    XYimag = np.concatenate(XYimag, axis=0).reshape(-1, self.nperpacket, 8)
+
 
                     arr[:len(indpol0), 0, fin] = data_corr[indpol0]
                     arr[:len(indpol1), 3, fin] = data_corr[indpol1]
 
-                    arr[:len(XYreal), 1, fin] = XYreal.mean(-1)
-                    arr[:len(XYimag), 2, fin] = XYimag.mean(-1)
+                    arr[:len(XYreal), 1, fin] = XYreal.mean(1)
+                    arr[:len(XYimag), 2, fin] = XYimag.mean(1)
 
                     tt[:len(tt_xy), 1, fin] = np.array(tt_xy).repeat(8).reshape(-1, 8)
                     tt[:len(tt_xy), 2, fin] = tt[:len(tt_xy), 1, fin].copy()
@@ -400,7 +402,6 @@ class ReadBeamform:
                     if (len(indpol1) >= 1) and (len(indpol1) < arr.shape[0]):
                          tt[:len(indpol1), 3, fin] = self.get_times(\
                                          header[indpol1]).repeat(8).reshape(-1, 8)
-
 
           return arr, tt
 
@@ -435,20 +436,17 @@ class ReadBeamform:
 
           data = data[:, ::2] + 1j * data[:, 1::2]
 
-
-          arr = np.zeros([self.nperpacket * (data_corr.shape[0] / self.nfr / 2 / len(slots) + 256)
+          arr = np.zeros([625 * (data.shape[0] / self.nfr / 2 / len(slots) + 256)
                                    , 2*self.npol, self.nfreq], np.float32)
 
-          tt = np.zeros([self.nperpacket * (data_corr.shape[0] / self.nfr / 2 / len(slots) + 256)
-                                   , 2*self.npol, self.nfreq], np.float32)
+          tt = np.zeros_like(arr)
 
           # Precalculate the coh dedispersion shift phases
-          dd_coh = self.get_fft_freq(self.ntint, DM)
+          dd_coh = self.get_fft_freq(self.ntint, dm)
 
           for qq in range(self.nfr):
 
-               for ii in range(16):
-
+               for ii in slots:
                     fin = ii + 16 * qq + 128 * np.arange(8)
 
                     indpol0 = np.where((header[:, 0]==0) & \
@@ -466,14 +464,53 @@ class ReadBeamform:
                     seq0 = header[indpol0, -1]
                     seq1 = header[indpol1, -1]
 
+                    frames0 = (seq0 - seq0[0]) / self.nperpacket
+                    frames1 = (seq1 - seq1[0]) / self.nperpacket
+                    
+                    data0 = np.zeros([frames0.max()+1, self.nperpacket * 8], dtype=data.dtype)
+                    data1 = np.zeros([frames1.max()+1, self.nperpacket * 8], dtype=data.dtype)
+
+                    seq0 = np.linspace(seq0[0], seq0[-1], len(data0))                    
+                    seq1 = np.linspace(seq1[0], seq1[-1], len(data1))                    
+
                     # Make sure we can safely FFT for coherent dedispersion
+                    data0_ = data[indpol0]#.reshape(-1, 8)
+                    data1_ = data[indpol1]#.reshape(-1, 8)
+
+                    data0[frames0] = data0_
+                    data1[frames1] = data1_
+
+                    data0.shape = (-1, 8)
+                    data1.shape = (-1, 8)
+
+                    dropped_pack0 = np.where(np.diff(seq0)!=self.nperpacket)[0]
+                    dropped_pack1 = np.where(np.diff(seq1)!=self.nperpacket)[0]
+
+#                    print len(dropped_pack0), len(dropped_pack1)
+#                    print seq0.shape, seq1.shape, data0.shape, data1.shape
+
+                    """for dp in dropped_pack0:
+                        fill_pack = np.arange(seq0[dp] + self.nperpacket, seq0[dp+1], self.nperpacket)
+                        print dp, seq0[dp+1] - seq0[dp], fill_pack
+                        seq0 = np.insert(seq0, dp+1, fill_pack)
+                        data0 = np.insert(data1, dp+1, 
+                                          np.repeat(0.0, len(fill_pack))[:, np.newaxis], axis=0)
+
+                    for dp in dropped_pack1:
+                        fill_pack = np.arange(seq1[dp] + self.nperpacket, seq1[dp+1], self.nperpacket)
+                        seq1 = np.insert(seq1, dp+1, fill_pack)
+                        data1 = np.insert(data1, dp+1, 
+                                          np.repeat(0.0, len(fill_pack))[:, np.newaxis], axis=0)
+
+#                    print seq0.shape, seq1.shape, data0.shape, data1.shape
+                    """ 
+
                     if not (np.diff(seq0)==self.nperpacket).all():
                          print "Dropped packet, shouldn't fft"
-
                          continue
 
-                    data0 = data[indpol0].reshape(-1, 8)[:self.ntint]
-                    data1 = data[indpol1].reshape(-1, 8)[:self.ntint]
+                    data0 = data0[:self.ntint]
+                    data1 = data1[:self.ntint]
 
                     data_dechan0 = fft(data0, axis=0, overwrite_x=True)
                     data_dechan1 = fft(data1, axis=0, overwrite_x=True)
@@ -487,9 +524,9 @@ class ReadBeamform:
                     data_corr0 = data0.real**2 + data0.imag**2
                     data_corr1 = data1.real**2 + data1.imag**2
 
-                    arr[:len(indpol0), 0, fin] = data_corr0
-                    arr[:len(indpol1), 3, fin] = data_corr1
-
+                    arr[:self.ntint, 0, fin] = data_corr0
+                    arr[:self.ntint, 3, fin] = data_corr1
+                 
                     del data_corr0, data_corr1
 
                     indpol0 = indpol0[:inl]
