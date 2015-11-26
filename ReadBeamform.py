@@ -489,8 +489,6 @@ class ReadBeamform:
                     data0.shape = (-1, 8)
                     data1.shape = (-1, 8)
 
-                    print data0.shape, seq0.shape
-
                     dropped_pack0 = np.where(np.diff(seq0)!=self.nperpacket)[0]
                     dropped_pack1 = np.where(np.diff(seq1)!=self.nperpacket)[0]
 
