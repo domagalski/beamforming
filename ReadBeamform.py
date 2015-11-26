@@ -521,7 +521,7 @@ class ReadBeamform:
                     data_dechan0 = fft(data0, axis=0, overwrite_x=True)
                     data_dechan1 = fft(data1, axis=0, overwrite_x=True)
 
-                    print data0.shape, data_dechan0.shape, dd_coh.shape
+                    print data0.shape, data_dechan0.shape, dd_coh0.shape
 
                     data_dechan0 *= dd_coh0[:, fin]
                     data_dechan1 *= dd_coh1[:, fin]
