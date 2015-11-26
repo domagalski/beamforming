@@ -265,13 +265,13 @@ class ReadBeamform:
 
           return self.J2000_to_unix(times)
 
-     def get_fft_freq(self, ntint, dm):
+     def get_fft_freq(self, freq, ntint, dm):
           dtsample = 2 * self.nfreq * self.dt
 
-          fcoh = self.freq - fftfreq(
+          fcoh = freq - fftfreq(
                     ntint, dtsample)[:, np.newaxis]
      
-          _fref = self.freq[np.newaxis]
+          _fref = freq[np.newaxis]
 
           dang = (self.dispersion_delay_constant * dm * fcoh *
                               (1./_fref - 1./fcoh)**2) 
@@ -440,7 +440,6 @@ class ReadBeamform:
 
           # Precalculate the coh dedispersion shift phases
 #          dd_coh = self.get_fft_freq(self.ntint, dm)
-          dd_coh = self.get_fft_freq(data.shape[0], dm)
 
 
           for qq in range(self.nfr):
@@ -516,13 +515,16 @@ class ReadBeamform:
 #                    data0 = data0[:self.ntint]
 #                    data1 = data1[:self.ntint]
 
+                    dd_coh0 = self.get_fft_freq(self.freq[fin], data0.shape[0], dm)  
+                    dd_coh1 = self.get_fft_freq(self.freq[fin], data1.shape[0], dm)
+
                     data_dechan0 = fft(data0, axis=0, overwrite_x=True)
                     data_dechan1 = fft(data1, axis=0, overwrite_x=True)
 
                     print data0.shape, data_dechan0.shape, dd_coh.shape
 
-                    data_dechan0 *= dd_coh[:, fin]
-                    data_dechan1 *= dd_coh[:, fin]
+                    data_dechan0 *= dd_coh0[:, fin]
+                    data_dechan1 *= dd_coh1[:, fin]
 
                     data0 = ifft(data_dechan0, axis=0, overwrite_x=True)
                     data1 = ifft(data_dechan1, axis=0, overwrite_x=True)
