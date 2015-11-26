@@ -466,8 +466,8 @@ class ReadBeamform:
                     frames0 = (seq0 - seq0[0]) / self.nperpacket
                     frames1 = (seq1 - seq1[0]) / self.nperpacket
                     
-                    data0 = np.zeros([frames0.max(), self.nperpacket * 8], dtype=data.dtype)
-                    data1 = np.zeros([frames1.max(), self.nperpacket * 8], dtype=data.dtype)
+                    data0 = np.zeros([frames0.max() + 1, self.nperpacket * 8], dtype=data.dtype)
+                    data1 = np.zeros([frames1.max() + 1, self.nperpacket * 8], dtype=data.dtype)
 
                     #seq0 = np.linspace(seq0[0], seq0[-1], len(data0) * self.nperpacket)                    
                     #seq1 = np.linspace(seq1[0], seq1[-1], len(data1) * self.nperpacket)                    
