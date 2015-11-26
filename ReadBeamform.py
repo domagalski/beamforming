@@ -571,6 +571,7 @@ class ReadBeamform:
                               fold_arr[fin[nu], 0, ti] = np.bincount(bins0[ti], 
                                              weights=data_corr0[ti, :, nu], minlength=ngate)
 
+                         print fold_arr.sum()
                          #icount[fin, 1, ti] = np.bincount(binsxy, XYreal != 0., ngate)    
 
                          #icount[fin, 2, ti] = np.bincount(binsxy, XYimag != 0., ngate)  
