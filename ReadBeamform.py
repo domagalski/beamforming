@@ -439,7 +439,9 @@ class ReadBeamform:
           fold_arr = np.zeros([self.nfreq, self.npol**2, data.shape[0]//ngate, ngate], np.float32)
 
           # Precalculate the coh dedispersion shift phases
-          dd_coh = self.get_fft_freq(self.ntint, dm)
+#          dd_coh = self.get_fft_freq(self.ntint, dm)
+          dd_coh = self.get_fft_freq(fold_arr.shape[0], dm)
+
 
           for qq in range(self.nfr):
 
