@@ -558,6 +558,7 @@ class ReadBeamform:
 
                     data_corr0 = data_corr0[:(len(times0)//trb*trb)].reshape(-1, trb, 8)
 
+                    print data_corr0.shape, bins0.shape
                     bins0 = bins0[:(len(times0)//trb * trb)].reshape(-1, trb, 8)
 
                     # data_corr0 = data_corr0[:(ntimes*trb)]
