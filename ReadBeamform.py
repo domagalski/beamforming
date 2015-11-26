@@ -511,8 +511,8 @@ class ReadBeamform:
                     """ 
 
 
-                    data0 = data0[:self.ntint]
-                    data1 = data1[:self.ntint]
+#                    data0 = data0[:self.ntint]
+#                    data1 = data1[:self.ntint]
 
                     data_dechan0 = fft(data0, axis=0, overwrite_x=True)
                     data_dechan1 = fft(data1, axis=0, overwrite_x=True)
@@ -540,7 +540,7 @@ class ReadBeamform:
                     times1 = self.get_times(header[indpol1], seq=False)[0] \
                                         + (seq0 - seq0[0]) / 625.0**2
 
-                    print times0[:10], np.diff(times0)[0:5]  
+                    print (seq0 - seq0[0])[:10]
 
                     bins0 = (((times0 / p0) % 1) * ngate).astype(np.int)      
                     bins1 = (((times1 / p0) % 1) * ngate).astype(np.int)  
