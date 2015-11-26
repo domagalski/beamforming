@@ -406,7 +406,7 @@ class ReadBeamform:
           return arr, tt
 
 
-     def correlate_and_fill_cohdd(self, data, header, p0, dm, ngate=64, trb=1):
+     def correlate_and_fill_cohdd(self, data, header, p0, dm, ngate=64, trb=625**2):
           """ Take header and data arrays and reorganize
           to produce the full time, pol, freq array after
           coherently dedispersing timestream
@@ -436,8 +436,12 @@ class ReadBeamform:
 
           data = data[:, ::2] + 1j * data[:, 1::2]
 
-          fold_arr = np.zeros([self.nfreq, self.npol**2, data.shape[0]//ngate, ngate], np.float32)
+          ntimes = self.data.shape[-1] // trb
+
+          fold_arr = np.zeros([self.nfreq, self.npol**2, ntimes, ngate], np.float32)
           icount = fold_arr.copy()
+
+          print fold_arr.shape, "fold"
 
           # Precalculate the coh dedispersion shift phases
 #          dd_coh = self.get_fft_freq(self.ntint, dm)
@@ -547,33 +551,40 @@ class ReadBeamform:
                     times1 = self.get_times(header[indpol1], seq=False)[0] \
                                         + (seq0 - seq0[0]) / 625.0**2
 
-                    print len(times0), len((times0 / p0 % 1))
-
                     bins0 = (((times0 / p0) % 1) * ngate).astype(np.int).repeat(8)     
                     bins1 = (((times1 / p0) % 1) * ngate).astype(np.int).repeat(8)
 
-                    print bins0.shape, data_corr0.shape
+                    bins0 = bins0[:(ntimes*trb)].reshape(-1, trb)
 
-                    icount[fin, 0, ti] = np.bincount(bins0, 
-                                             data_corr0.flatten() != 0., ngate).reshape(-1, 8)
+                    data_corr0 = data_corr0[:(ntimes*trb)].reshape(-1, trb)
+                    # data_corr0 = data_corr0[:(ntimes*trb)]
+                    # data_corr0 = data_corr0[:(ntimes*trb)]
+                    # data_corr0 = data_corr0[:(ntimes*trb)]
 
-                    icount[fin, 1, ti] = np.bincount(binsxy, XYreal != 0., ngate)    
+                    for ti in range(ntimes):
 
-                    icount[fin, 2, ti] = np.bincount(binsxy, XYimag != 0., ngate)  
+                         icount[fin, 0, ti] = np.bincount(bins0[ti], 
+                                                  data_corr0.flatten() != 0., ngate).reshape(-1, 8)
 
-                    icount[fin, 3, ti] = np.bincount(bins1, data_corr1 != 0., ngate)   
+                         fold_arr[fin, 0, ti, :] = np.bincount(bins0[ti], 
+                                             weights=data_corr0[ti], minlength=ngate)
 
-                    fold_arr[fi, 0, ti, :] = np.bincount(bins0, 
-                                        weights=data_corr0, minlength=ngate)
+                         icount[fin, 1, ti] = np.bincount(binsxy, XYreal != 0., ngate)    
 
-                    fold_arr[fi, 1, ti, :] = np.bincount(binsxy, 
-                                        weights=XYreal, minlength=ngate)
+                         icount[fin, 2, ti] = np.bincount(binsxy, XYimag != 0., ngate)  
 
-                    fold_arr[fi, 2, ti, :] = np.bincount(binxy, 
-                                        weights=XYimag, minlength=ngate)
+                         icount[fin, 3, ti] = np.bincount(bins1, data_corr1 != 0., ngate)   
 
-                    fold_arr[fi, -1, ti, :] = np.bincount(bins1, 
-                                        weights=data_corr1, minlength=ngate)
+
+
+                         fold_arr[fin, 1, ti, :] = np.bincount(binsxy, 
+                                             weights=XYreal, minlength=ngate)
+
+                         fold_arr[fin, 2, ti, :] = np.bincount(binxy, 
+                                             weights=XYimag, minlength=ngate)
+
+                         fold_arr[fin, -1, ti, :] = np.bincount(bins1, 
+                                             weights=data_corr1, minlength=ngate)
 
 
           return fold_arr, icount
