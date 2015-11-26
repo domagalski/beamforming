@@ -406,7 +406,7 @@ class ReadBeamform:
           return arr, tt
 
 
-     def correlate_and_fill_cohdd(self, data, header, p0, dm, ngate=64, trb=625**2):
+     def correlate_and_fill_cohdd(self, data, header, p0, dm, ngate=64, trb=60*625**2):
           """ Take header and data arrays and reorganize
           to produce the full time, pol, freq array after
           coherently dedispersing timestream
@@ -436,7 +436,7 @@ class ReadBeamform:
 
           data = data[:, ::2] + 1j * data[:, 1::2]
 
-          ntimes = data.shape[0] * self.nperpacket // trb
+          ntimes = data.shape[0] * self.nperpacket // (trb * self.npol * self.nfr)
 
           fold_arr = np.zeros([self.nfreq, self.npol**2, ntimes, ngate], np.float32)
           icount = fold_arr.copy()
