@@ -530,8 +530,12 @@ class ReadBeamform:
                     XYreal = np.concatenate(XYreal, axis=0)
                     XYimag = np.concatenate(XYimag, axis=0)
 
-                    times0 = self.get_times(seq0)
-                    times1 = self.get_times(seq1)    
+                    times0 = self.get_times(header[indpol0], seq=False)[0] 
+                                        + (seq0 - seq0[0]) / 625.0**2
+                    times1 = self.get_times(header[indpol1], seq=False)[0]  
+                                        + (seq0 - seq0[0]) / 625.0**2
+
+                    print np.diff(times0)[0:10]  
 
                     bins0 = (((times0 / p0) % 1) * ngate).astype(np.int)      
                     bins1 = (((times1 / p0) % 1) * ngate).astype(np.int)  
