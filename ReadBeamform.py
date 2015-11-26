@@ -560,22 +560,20 @@ class ReadBeamform:
 
                     data_corr0 = data_corr0[:(len(times0)//trb*trb)].reshape(-1, trb, 8)
 
-                    print data_corr0.shape, len(times0), trb, bins0[:(len(times0)//trb * trb)].shape
                     bins0 = bins0[:(len(times0)//trb * trb)].repeat(8).reshape(-1, trb, 8)
 
-
-                    # data_corr0 = data_corr0[:(ntimes*trb)]
+                    # data_corr0 = data_corr0[:(nimes*trb)]
                     # data_corr0 = data_corr0[:(ntimes*trb)]
                     # data_corr0 = data_corr0[:(ntimes*trb)]
 
                     for ti in range(ntimes):
 
-                         print bins0.shape, data_corr0.shape, bins0[ti]
+                         print ti, bins0.shape, data_corr0.shape
                          icount[fin, 0, ti] = np.bincount(bins0[ti], 
                                                   data_corr0[ti].flatten() != 0., ngate).reshape(-1, 8)
 
                          fold_arr[fin, 0, ti, :] = np.bincount(bins0[ti], 
-                                             weights=data_corr0[ti], minlength=ngate)
+                                             weights=data_corr0[ti].flatten(), minlength=ngate).reshape(-1, 8)
 
                          #icount[fin, 1, ti] = np.bincount(binsxy, XYreal != 0., ngate)    
 
