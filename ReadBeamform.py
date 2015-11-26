@@ -436,7 +436,7 @@ class ReadBeamform:
 
           data = data[:, ::2] + 1j * data[:, 1::2]
 
-          ntimes = self.data.shape[-1] // trb
+          ntimes = data.shape[-1] // trb
 
           fold_arr = np.zeros([self.nfreq, self.npol**2, ntimes, ngate], np.float32)
           icount = fold_arr.copy()
