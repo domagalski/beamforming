@@ -436,8 +436,10 @@ class ReadBeamform:
 
           data = data[:, ::2] + 1j * data[:, 1::2]
 
-          arr = np.zeros([625 * (data.shape[0] / self.nfr / 2 / len(slots) + 256)
+          fold_arr = np.zeros([625 * (data.shape[0] / self.nfr / 2 / len(slots) + 256)
                                    , 2*self.npol, self.nfreq], np.float32)
+
+          fold_arr = np.zeros([self.nfreq, ncorr, ntimes, ngate], self.data.dtype)
 
           tt = np.zeros_like(arr)
 
@@ -524,36 +526,43 @@ class ReadBeamform:
                     data_corr0 = data0.real**2 + data0.imag**2
                     data_corr1 = data1.real**2 + data1.imag**2
 
-                    arr[:self.ntint, 0, fin] = data_corr0
-                    arr[:self.ntint, 3, fin] = data_corr1
-                 
-                    del data_corr0, data_corr1
-
                     indpol0 = indpol0[:inl]
                     indpol1 = indpol1[:inl]
 
-                    XYreal, XYimag, tt_xy = self.correlate_xy(
+                    XYreal, XYimag, timesxy = self.correlate_xy(
                                  data0, data1, header, indpol0, indpol1)
 
                     XYreal = np.concatenate(XYreal, axis=0)
                     XYimag = np.concatenate(XYimag, axis=0)
 
-                    arr[:len(XYreal), 1, fin] = XYreal
-                    arr[:len(XYimag), 2, fin] = XYimag
+                    times0 = self.get_times(seq0)
+                    times1 = self.get_times(seq1)    
 
-                    tt[:len(tt_xy), 1, fin] = np.array(tt_xy).repeat(8).reshape(-1, 8)
-                    tt[:len(tt_xy), 2, fin] = tt[:len(tt_xy), 1, fin].copy()
+                    bins0 = (((times0 / p0) % 1) * ngate).astype(np.int)      
+                    bins1 = (((times1 / p0) % 1) * ngate).astype(np.int)  
 
-                    if (len(indpol0) >= 1) and (len(indpol0) < arr.shape[0]): 
-                         tt[:len(indpol0), 0, fin] = self.get_times(\
-                                         header[indpol0]).repeat(8).reshape(-1, 8)
+                    icount[fin, 0, ti] = np.bincount(bins0, data_corr0 != 0., ngate)    
 
-                    if (len(indpol1) >= 1) and (len(indpol1) < arr.shape[0]):
-                         tt[:len(indpol1), 3, fin] = self.get_times(\
-                                         header[indpol1]).repeat(8).reshape(-1, 8)
+                    icount[fin, 1, ti] = np.bincount(binsxy, XYreal != 0., ngate)    
+
+                    icount[fin, 2, ti] = np.bincount(binsxy, XYimag != 0., ngate)  
+
+                    icount[fin, 3, ti] = np.bincount(bins1, data_corr1 != 0., ngate)   
+
+                    fold_arr[fi, 0, ti, :] = np.bincount(bins0, 
+                                        weights=data_corr0, minlength=ngate)
+
+                    fold_arr[fi, 1, ti, :] = np.bincount(binsxy, 
+                                        weights=XYreal, minlength=ngate)
+
+                    fold_arr[fi, 2, ti, :] = np.bincount(binxy, 
+                                        weights=XYimag, minlength=ngate)
+
+                    fold_arr[fi, -1, ti, :] = np.bincount(bins1, 
+                                        weights=data_corr1, minlength=ngate)
 
 
-          return arr[:], tt
+          return fold_arr, icount
 
 
      def correlate_and_reorg(self, header, data):
