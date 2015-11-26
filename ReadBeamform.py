@@ -500,11 +500,13 @@ class ReadBeamform:
                                           np.repeat(0.0, len(fill_pack))[:, np.newaxis], axis=0)
 
 #                    print seq0.shape, seq1.shape, data0.shape, data1.shape
-                    """ 
+                    
 
                     if not (np.diff(seq0)==self.nperpacket).all():
                          print "Dropped packet, shouldn't fft"
                          continue
+                    """ 
+
 
                     data0 = data0[:self.ntint]
                     data1 = data1[:self.ntint]
