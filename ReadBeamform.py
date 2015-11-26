@@ -479,13 +479,13 @@ class ReadBeamform:
                     data0_ = data[indpol0]#.reshape(-1, 8)
                     data1_ = data[indpol1]#.reshape(-1, 8)
 
-                    print data0.shape[0], data0_.shape, seq0.shape
-
                     data0[frames0] = data0_
                     data1[frames1] = data1_
 
                     data0.shape = (-1, 8)
                     data1.shape = (-1, 8)
+
+                    print data0.shape, seq0.shape
 
                     dropped_pack0 = np.where(np.diff(seq0)!=self.nperpacket)[0]
                     dropped_pack1 = np.where(np.diff(seq1)!=self.nperpacket)[0]
