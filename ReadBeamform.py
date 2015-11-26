@@ -472,12 +472,14 @@ class ReadBeamform:
                     #seq0 = np.linspace(seq0[0], seq0[-1], len(data0) * self.nperpacket)                    
                     #seq1 = np.linspace(seq1[0], seq1[-1], len(data1) * self.nperpacket)                    
 
-                    seq0 = np.arange(seq0[0], seq0[-1])
-                    seq1 = np.arange(seq1[0], seq1[-1])
+                    seq0 = np.arange(seq0[0], seq0[-1] + 1)
+                    seq1 = np.arange(seq1[0], seq1[-1] + 1)
 
-                    # Make sure we can safely FFT for coherent dedispersion
+
                     data0_ = data[indpol0]#.reshape(-1, 8)
                     data1_ = data[indpol1]#.reshape(-1, 8)
+
+                    print data0.shape[0], data0_.shape, seq0.shape
 
                     data0[frames0] = data0_
                     data1[frames1] = data1_
