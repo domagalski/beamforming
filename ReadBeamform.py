@@ -568,18 +568,14 @@ class ReadBeamform:
 
                     for ti in range(ntimes):
 
-                         print ti, bins0.shape, data_corr0.shape, fold_arr.shape
+                         for nu in range(self.nfr):
+                              print nu
 
-                         print ""
-                         print np.bincount(bins0[ti].repeat(8), 
-                                                  data_corr0[ti].flatten() != 0., ngate).reshape(-1, 8).shape 
-                         print icount[fin, 0, ti].shape
+                              icount[fin[nu], 0, ti] = np.bincount(bins0[ti], 
+                                             data_corr0[ti, nu] != 0., ngate).reshape(-1, 8)
 
-                         icount[fin, 0, ti] = np.bincount(bins0[ti].repeat(8), 
-                                                  data_corr0[ti].flatten() != 0., ngate).reshape(-1, 8)
-
-                         fold_arr[fin, 0, ti, :] = np.bincount(bins0[ti].repeat(8), 
-                                             weights=data_corr0[ti].flatten(), minlength=ngate).reshape(-1, 8)
+                              fold_arr[fin[nu], 0, ti] = np.bincount(bins0[ti], 
+                                             weights=data_corr0[ti, nu], minlength=ngate)
 
                          #icount[fin, 1, ti] = np.bincount(binsxy, XYreal != 0., ngate)    
 
