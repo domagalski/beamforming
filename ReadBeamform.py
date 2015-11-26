@@ -556,9 +556,9 @@ class ReadBeamform:
                     bins0 = (((times0 / p0) % 1) * ngate).astype(np.int).repeat(8)
                     bins1 = (((times1 / p0) % 1) * ngate).astype(np.int).repeat(8)
 
-                    data_corr0 = data_corr0[:(len(bins0)//trb*trb)].reshape(-1, trb, 8)
+                    data_corr0 = data_corr0[:(len(times0)//trb*trb)].reshape(-1, trb, 8)
 
-                    bins0 = bins0[:(len(bins0)//trb * trb)].reshape(-1, trb, 8)
+                    bins0 = bins0[:(len(times0)//trb * trb)].reshape(-1, trb, 8)
 
                     # data_corr0 = data_corr0[:(ntimes*trb)]
                     # data_corr0 = data_corr0[:(ntimes*trb)]
