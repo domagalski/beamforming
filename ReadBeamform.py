@@ -566,7 +566,7 @@ class ReadBeamform:
                     # data_corr0 = data_corr0[:(ntimes*trb)]
                     # data_corr0 = data_corr0[:(ntimes*trb)]
 
-                    for ti in range(ntimes):
+                    for ti in range(bins0.shape[0]):
 
                          for nu in range(self.nfr):
                               print ti, nu
