@@ -531,15 +531,16 @@ class ReadBeamform:
                     XYimag = np.concatenate(XYimag, axis=0)
 
                     times0 = self.get_times(header[indpol0], seq=False)[0] \
-                                        + (seq0 - seq0[0]) / 625.0**2
+                                        + (seq0 - seq0[0]) / 625.0
                     times1 = self.get_times(header[indpol1], seq=False)[0] \
-                                        + (seq0 - seq0[0]) / 625.0**2
+                                        + (seq0 - seq0[0]) / 625.0
 
-                    print np.diff(times0)[0:10]  
+                    print times0, np.diff(times0)[0:5]  
 
                     bins0 = (((times0 / p0) % 1) * ngate).astype(np.int)      
                     bins1 = (((times1 / p0) % 1) * ngate).astype(np.int)  
 
+                    print bins0.shape, data_corr0.shape
                     icount[fin, 0, ti] = np.bincount(bins0, data_corr0 != 0., ngate)    
 
                     icount[fin, 1, ti] = np.bincount(binsxy, XYreal != 0., ngate)    
