@@ -466,14 +466,14 @@ class ReadBeamform:
                     frames0 = (seq0 - seq0[0]) / self.nperpacket
                     frames1 = (seq1 - seq1[0]) / self.nperpacket
                     
-                    data0 = np.zeros([frames0.max()+1, self.nperpacket * 8], dtype=data.dtype)
-                    data1 = np.zeros([frames1.max()+1, self.nperpacket * 8], dtype=data.dtype)
+                    data0 = np.zeros([frames0.max(), self.nperpacket * 8], dtype=data.dtype)
+                    data1 = np.zeros([frames1.max(), self.nperpacket * 8], dtype=data.dtype)
 
                     #seq0 = np.linspace(seq0[0], seq0[-1], len(data0) * self.nperpacket)                    
                     #seq1 = np.linspace(seq1[0], seq1[-1], len(data1) * self.nperpacket)                    
 
-                    seq0 = np.arange(seq0[0], seq0[-1] + 1)
-                    seq1 = np.arange(seq1[0], seq1[-1] + 1)
+                    seq0 = np.arange(seq0[0], seq0[-1])
+                    seq1 = np.arange(seq1[0], seq1[-1])
 
                     # Make sure we can safely FFT for coherent dedispersion
                     data0_ = data[indpol0]#.reshape(-1, 8)
@@ -547,12 +547,12 @@ class ReadBeamform:
 
                     print len(times0), len((times0 / p0 % 1))
 
-                    bins0 = (((times0 / p0) % 1) * ngate).astype(np.int)      
-                    bins1 = (((times1 / p0) % 1) * ngate).astype(np.int)  
+                    bins0 = (((times0 / p0) % 1) * ngate).astype(np.int).repeat(8)     
+                    bins1 = (((times1 / p0) % 1) * ngate).astype(np.int).repeat(8)
 
                     print bins0.shape, data_corr0.shape
 
-                    icount[fin, 0, ti] = np.bincount(bins0.repeat(8), 
+                    icount[fin, 0, ti] = np.bincount(bins0, 
                                              data_corr0.flatten() != 0., ngate).reshape(-1, 8)
 
                     icount[fin, 1, ti] = np.bincount(binsxy, XYreal != 0., ngate)    
