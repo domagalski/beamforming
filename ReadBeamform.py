@@ -528,8 +528,6 @@ class ReadBeamform:
                     data_dechan0 = fft(data0, axis=0, overwrite_x=True)
                     data_dechan1 = fft(data1, axis=0, overwrite_x=True)
 
-                    print len(data0), len(data0), "fft lengths"
-
                     data_dechan0 *= dd_coh0
                     data_dechan1 *= dd_coh1
 
@@ -564,12 +562,10 @@ class ReadBeamform:
                     # data_corr0 = data_corr0[:(nimes*trb)]
                     # data_corr0 = data_corr0[:(ntimes*trb)]
                     # data_corr0 = data_corr0[:(ntimes*trb)]
-                    print data_corr0.shape, bins0.shape
 
                     for ti in range(bins0.shape[0]):
 
                          for nu in range(self.nfr):
-                              print ti, nu
 
                               icount[fin[nu], 0, ti] = np.bincount(bins0[ti], 
                                              data_corr0[ti, :, nu] != 0., ngate)
