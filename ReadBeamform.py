@@ -556,7 +556,6 @@ class ReadBeamform:
                     bins0 = (((times0 / p0) % 1) * ngate).astype(np.int)
                     bins1 = (((times1 / p0) % 1) * ngate).astype(np.int)
 
-                    print data_corr0.shape, bins0.shape
 
                     data_corr0 = data_corr0[:(len(times0)//trb*trb)].reshape(-1, trb, 8)
 
@@ -565,6 +564,7 @@ class ReadBeamform:
                     # data_corr0 = data_corr0[:(nimes*trb)]
                     # data_corr0 = data_corr0[:(ntimes*trb)]
                     # data_corr0 = data_corr0[:(ntimes*trb)]
+                    print data_corr0.shape, bins0.shape
 
                     for ti in range(bins0.shape[0]):
 
