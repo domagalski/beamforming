@@ -436,7 +436,7 @@ class ReadBeamform:
 
           data = data[:, ::2] + 1j * data[:, 1::2]
 
-          ntimes = data.shape[-1] // trb
+          ntimes = data.shape[0] * self.nperpacket // trb
 
           fold_arr = np.zeros([self.nfreq, self.npol**2, ntimes, ngate], np.float32)
           icount = fold_arr.copy()
@@ -527,6 +527,8 @@ class ReadBeamform:
 
                     data_dechan0 = fft(data0, axis=0, overwrite_x=True)
                     data_dechan1 = fft(data1, axis=0, overwrite_x=True)
+
+                    print len(data0), len(data0), "fft lengths"
 
                     data_dechan0 *= dd_coh0
                     data_dechan1 *= dd_coh1
