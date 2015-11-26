@@ -437,6 +437,7 @@ class ReadBeamform:
           data = data[:, ::2] + 1j * data[:, 1::2]
 
           fold_arr = np.zeros([self.nfreq, self.npol**2, data.shape[0]//ngate, ngate], np.float32)
+          icount = fold_arr.copy()
 
           # Precalculate the coh dedispersion shift phases
 #          dd_coh = self.get_fft_freq(self.ntint, dm)
@@ -521,8 +522,6 @@ class ReadBeamform:
                     data_dechan0 = fft(data0, axis=0, overwrite_x=True)
                     data_dechan1 = fft(data1, axis=0, overwrite_x=True)
 
-                    print data0.shape, data_dechan0.shape, dd_coh0.shape
-
                     data_dechan0 *= dd_coh0
                     data_dechan1 *= dd_coh1
 
@@ -546,13 +545,15 @@ class ReadBeamform:
                     times1 = self.get_times(header[indpol1], seq=False)[0] \
                                         + (seq0 - seq0[0]) / 625.0**2
 
-                    print (seq0 - seq0[0])[:10]
+                    print len(times0), len((times0 / p0 % 1))
 
                     bins0 = (((times0 / p0) % 1) * ngate).astype(np.int)      
                     bins1 = (((times1 / p0) % 1) * ngate).astype(np.int)  
 
                     print bins0.shape, data_corr0.shape
-                    icount[fin, 0, ti] = np.bincount(bins0, data_corr0 != 0., ngate)    
+
+                    icount[fin, 0, ti] = np.bincount(bins0.repeat(8), 
+                                             data_corr0.flatten() != 0., ngate).reshape(-1, 8)
 
                     icount[fin, 1, ti] = np.bincount(binsxy, XYreal != 0., ngate)    
 
