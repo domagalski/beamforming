@@ -472,8 +472,8 @@ class ReadBeamform:
                     #seq0 = np.linspace(seq0[0], seq0[-1], len(data0) * self.nperpacket)                    
                     #seq1 = np.linspace(seq1[0], seq1[-1], len(data1) * self.nperpacket)                    
 
-                    seq0 = np.arange(seq0[0], seq0[-1] + 1)
-                    seq1 = np.arange(seq1[0], seq1[-1] + 1)
+                    seq0 = np.arange(seq0[0], seq0[-1] + self.nperpacket)
+                    seq1 = np.arange(seq1[0], seq1[-1] + self.nperpacket)
 
 
                     data0_ = data[indpol0]#.reshape(-1, 8)
