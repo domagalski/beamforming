@@ -3,9 +3,6 @@ import os
 import numpy as np 
 
 try:
-    # do *NOT* use on-disk cache; blue gene doesn't work; slower anyway
-    # import pyfftw
-    # pyfftw.interfaces.cache.enable()
     from pyfftw.interfaces.scipy_fftpack import (rfft, rfftfreq,
                                                  fft, ifft, fftfreq, fftshift)
     _fftargs = {'threads': int(os.environ.get('OMP_NUM_THREADS', 2)),
@@ -433,6 +430,7 @@ class ReadBeamform:
           slots = set(header[:, 2])
 
           print "Data has", len(slots), "slots: ", slots
+          print "/n Folding with p0 %f and DM %f" % (p0, dm)
 
           data = data[:, ::2] + 1j * data[:, 1::2]
 
@@ -571,7 +569,6 @@ class ReadBeamform:
                               fold_arr[fin[nu], 0, ti] = np.bincount(bins0[ti], 
                                              weights=data_corr0[ti, :, nu], minlength=ngate)
 
-                         print fold_arr.sum()
                          #icount[fin, 1, ti] = np.bincount(binsxy, XYreal != 0., ngate)    
 
                          #icount[fin, 2, ti] = np.bincount(binsxy, XYimag != 0., ngate)  
