@@ -4,6 +4,7 @@ import numpy as np
 import datetime
 import h5py
 import glob
+import time
 
 import misc_data_io as misc
 from ch_util import andata, ephemeris as eph, tools
@@ -31,7 +32,6 @@ def plt_gains(vis, nu, img_name='out.png', bad_chans=[]):
         else:
             angle_err += np.mean(abs(np.angle(vis[nu, misc.feed_map(ant, i+1, 128)]))) / 127.0
             plt.plot((np.angle(vis[nu, misc.feed_map(ant, i+1, 128)])))
-            #plt.plot(vis[nu, misc.feed_map(ant, i+1, 128)])
             plt.axis('off')
             plt.axhline(0.0, color='black')
 
@@ -120,7 +120,9 @@ def read_data(reader_obj, src, prod_sel, freq_sel=None, del_t=50):
 
     return and_obj
 
-def solve_untrans(filename, corrs, feeds, inp, src, nfreq=1024, transposed=False, nfeed=128):
+def solve_untrans(filename, corrs, feeds, inp, 
+          src, nfreq=1024, transposed=False, nfeed=128):
+
     del_t = 400
 
     f = h5py.File(filename, 'r')
@@ -138,7 +140,8 @@ def solve_untrans(filename, corrs, feeds, inp, src, nfreq=1024, transposed=False
     src_trans += del_phi
 
     # Select +- del_t of transit, accounting for the mispointing 
-    t_range = np.where((times < src_trans + del_t) & (times > src_trans - del_t))[0]
+    t_range = np.where((times < src_trans + 
+                  del_t) & (times > src_trans - del_t))[0]
  
     print "\n...... This data is from %s starting at RA: %f ...... \n" \
         % (eph.unix_to_datetime(times[0]), eph.transit_RA(times[0]))
@@ -158,6 +161,7 @@ def solve_untrans(filename, corrs, feeds, inp, src, nfreq=1024, transposed=False
     # Start at a strong freq channel that can be plotted
     # and from which we can find the noise source on-sample
     for i in range(9, nsplit) + range(0, 9):
+
         k+=1
 
         # Divides the arrays up into nfreq / nsplit freq chunks and solves those
@@ -173,12 +177,16 @@ def solve_untrans(filename, corrs, feeds, inp, src, nfreq=1024, transposed=False
 
             if k==1:
                 autos = auto_corrs(nfeed)
-                offp = (abs(vis[:, autos, 0::2]).mean() > (abs(vis[:, autos, 1::2]).mean())).astype(int)
+                offp = (abs(vis[:, autos, 0::2]).mean() > \
+                        (abs(vis[:, autos, 1::2]).mean())).astype(int)
+
                 times = times[offp::2]
             
             vis = vis[..., offp::2]
 
-            gg = f['gain_coeff'][frq[0]:frq[-1]+1, feeds, t_range[0]:t_range[-1]][..., offp::2]
+            gg = f['gain_coeff'][frq[0]:frq[-1]+1, 
+                    feeds, t_range[0]:t_range[-1]][..., offp::2]
+
             gain_coeff = gg['r'] + 1j * gg['i']
             
             del gg
@@ -207,6 +215,9 @@ def solve_untrans(filename, corrs, feeds, inp, src, nfreq=1024, transposed=False
         freq_MHZ = 800.0 - np.array(frq) / 1024.0 * 400.
     
         baddies = np.where(np.isnan(tools.get_feed_positions(inp)[:, 0]))[0]
+        a, b, c = select_corrs(baddies, nfeed=128)
+
+        vis[:, a + b] = 0.0
 
         # Fringestop to location of "src"
         data_fs = tools.fringestop_pathfinder(vis, eph.transit_RA(times), freq_MHZ, inp, src)
@@ -219,16 +230,20 @@ def solve_untrans(filename, corrs, feeds, inp, src, nfreq=1024, transposed=False
 
         Gains[frq] = a[..., trans_pix-3:trans_pix+4].mean(-1)
 
+        print "Nans %d %d" % (np.isnan(Gains).sum(), np.isnan(Gains[frq]).sum())
 
         # Plot up post-fs phases to see if everything has been fixed
-        if frq[0] == 9 * nsplit:
+        if frq[0] == 22 * nsplit:
             print "======================"
             print "   Plotting up freq: %d" % frq[0]
             print "======================"
+            img_nm = './phs_plots/dfs' + np.str(frq[17]) + np.str(np.int(time.time())) +'.png'
+            img_nmcorr = './phs_plots/dfs' + np.str(frq[17]) + np.str(np.int(time.time())) +'corr.png'
 
-            plt_gains(data_fs, 0, img_name='./phs_plots/dfs' + np.str(frq[17]) + '.png', bad_chans=baddies)
+            plt_gains(data_fs, 0, img_name=img_nm, bad_chans=baddies)
             dfs_corr = correct_dfs(data_fs, np.angle(Gains[frq])[..., np.newaxis], nfeed=128)
-            plt_gains(dfs_corr, 0, img_name='./phs_plots/dfs_corrmeanflah' + np.str(frq[17]) + '.png', bad_chans=baddies)
+
+            plt_gains(dfs_corr, 0, img_name=img_nmcorr, bad_chans=baddies)
 
             del dfs_corr
 
@@ -579,10 +594,10 @@ def fringestop_and_sum(fn, feeds, freq, src, transposed=True,
     # Get transit time for source 
     src_trans = eph.transit_times(src, times[0]) 
 
-    del_phi = (src._dec - np.radians(eph.CHIMELATITUDE)) * np.sin(np.radians(1.988))
+    del_phi = 1.30 * (src._dec - np.radians(eph.CHIMELATITUDE)) * np.sin(np.radians(1.988))
     del_phi *= (24 * 3600.0) / (2 * np.pi)
 
-    # Adjust the transit time accordingly                                                                                                            
+    # Adjust the transit time accordingly                                                                                                 
     src_trans += del_phi
 
     # Select +- del_t of transit, accounting for the mispointing                                                                                     
@@ -749,30 +764,34 @@ def find_transit(time0='Now', src=eph.CasA):
     dt_now = dt_now.isoformat()
 
     # Only use relevant characters in datetime string
-    dt_str = dt_now.replace("-", "")[:9]
+    dt_str = dt_now.replace("-", "")[:7]
     dirnm = '/mnt/gong/archive/' + dt_str
 
     filelist = glob.glob(dirnm + '*/*h5')
-    
-    ff = None
 
     # Step through each file and find that day's transit
     for ff in filelist:
-
+        
         try:
             andataReader = andata.Reader(ff)
             acqtimes = andataReader.time
-            trans_time = eph.transit_times(src, acqtimes[0])
+            trans_time = eph.transit_times(src, time0)
             
-            if (acqtimes[0] < trans_time and acqtimes[-1] > trans_time):
-                print "On ", eph.unix_to_datetime(trans_time)
-                print "foundit in %s \n" % ff
+            #print ff
+#            print eph.transit_RA(trans_time), eph.transit_RA(acqtimes[0])
+            del andataReader
+            
+            if np.abs(acqtimes - trans_time[0]).min() < 1000.0:
+#                print "On ", eph.unix_to_datetime(trans_time[0])
+#                print "foundit in %s \n" % ff
+                return ff
+
                 break
 
         except (KeyError, ValueError, IOError):
             pass
-            
-    return ff
+
+    return None
 
 
 flist = [48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 

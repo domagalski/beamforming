@@ -238,10 +238,12 @@ def check_gain_solution(infile_pkl, infile_h5, feeds, src, freq=305, transposed=
     return dfs, Gh5
 
 def fs_and_correct_gains(fn_h5, fn_gain, src, freq=305, \
-                              del_t = 900, transposed=True, remove_fpga_phase=True, remove_instr=True,
-                         remove_fpga=False):
+                              del_t = 900, transposed=True,\
+                              remove_fpga_phase=True, remove_instr=True,
+                              remove_fpga=False):
 
-    dfs = pc.fs_from_file(fn_h5, freq, src, del_t=1800, transposed=transposed)
+    dfs = pc.fs_from_file(fn_h5, freq, src,
+             del_t=1800, transposed=transposed)
 
     ntimes = dfs.shape[0]
 
@@ -256,7 +258,8 @@ def fs_and_correct_gains(fn_h5, fn_gain, src, freq=305, \
     feeds = range(256)
 
     # Skip loading the gains and applying them if both are False
-    if (remove_fpga is False) and (remove_instr is False):
+    if (remove_fpga is False) and \
+         (remove_instr is False) and (remove_fpga_phase is False):
          return dfs
 
     if transposed is True:
@@ -266,14 +269,21 @@ def fs_and_correct_gains(fn_h5, fn_gain, src, freq=305, \
          g = f['gain_coeff'][0, freq]
          Gh5 = g['r'] + 1j * g['i']
 
+    print np.isnan(Gh5).sum() / np.float(len(Gh5.flatten()))
     print "doing the big loop"
+    print gain_mat.sum()
 
     for fi, nu in enumerate(freq):
+
          for i in range(len(feeds)):
+
               for j in range(i, len(feeds)):
 
+                   # If solved with triu=False then 
+                   # remove_fpga should be +1j and instr should be -1j
                    if remove_fpga is True:
-                        dfs[:, misc.feed_map(i, j, 256)] /= np.conj((Gh5[fi, i]) * np.conj(Gh5[fi, j]))
+                        dfs[:, misc.feed_map(i, j, 256)] \
+                             /= np.conj((Gh5[fi, i]) * np.conj(Gh5[fi, j]))
 
                    if remove_fpga_phase is True:
                         # Remove fpga phases written in .h5 file
@@ -283,11 +293,12 @@ def fs_and_correct_gains(fn_h5, fn_gain, src, freq=305, \
                    if remove_instr is True:
                         # Apply gains solved for 
                         dfs[:, misc.feed_map(i, j, 256)] \
-                            *= np.exp(-1j * np.angle(gain_mat[fi, i] * np.conj(gain_mat[fi, j])))
+                            *= np.exp(-1j * np.angle(gain_mat[fi, i]\
+                                       * np.conj(gain_mat[fi, j])))
     
     print "Summed h5 gains: ", Gh5.sum()
 
-    return dfs
+    return dfs, Gh5, gain_mat
 
 """
 def check_gain_solution(infile_pkl, infile_h5, freq=305, transposed=True):
