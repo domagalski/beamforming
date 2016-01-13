@@ -251,6 +251,47 @@ def solve_untrans(filename, corrs, feeds, inp,
 
     return Gains
 
+def beamform_correlated_data(filename, frq, src, feeds=None, del_t=900, 
+                             transposed=True, absval=False):
+
+    """ Beamform to a given src
+
+    Parameters
+    ---------- 
+    
+    filename : np.str
+        name of .h5 file
+    frq      : list
+        list of frequency indexes ([305] not 305) 
+    src      : ephem object
+        source to fringestop to, e.g. ch_util.ephemeris.CasA 
+    feeds    : list of correlation inputs to 
+               use (e.g. range(64) uses only west cyl x-polarization)
+    absval   : boolean
+        In case data are not calibrated
+
+
+    Returns 
+    -------
+
+    data_beamformed : fringestopped and summed data
+    """
+
+    if feeds == None:
+        feeds = range(256)
+
+    data_fringestop = fs_from_file(filename, frq, src, 
+                              del_t=del_t, transposed=transposed)
+    
+    if absval is True:
+        data_fringestop = np.abs(data_fringestop)
+
+    data_beamformed = sum_corrs(data_fringestop, feeds)
+
+
+    return data_beamformed
+    
+
 def fs_from_file(filename, frq, src,  
                  del_t=900, transposed=True, subtract_avg=False):
 
