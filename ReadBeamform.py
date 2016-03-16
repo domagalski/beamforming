@@ -639,8 +639,29 @@ class ReadBeamform:
 
           return fold_arr, icount
 
-     def reorg_array(self, header, data):
-         
+     def reorg_array(self, header, data, rbtime=1):
+         """ Reorganizes voltages and returns contiguous array
+
+         Parameters
+         ---------- 
+         header : 
+             (50000, 6) arr containing header information
+         data   : 
+             (50000, 10000) data array 
+         rbtime : int
+             if greater than 1, reshapes after squaring voltages
+
+
+         Returns
+         -------
+         Organized array of voltages (if rbtimes==1), autocorrs 
+         if (rbtimes > 1)
+         """
+
+         # Makes sure rbtimes is an integer greater than 1
+         assert rbtimes >= 1
+         assert rbtimes % 1 == 0
+
          # Make complex array of voltages
          data_c = data[:, ::2] + 1j * data[:, 1::2]
 
@@ -653,7 +674,7 @@ class ReadBeamform:
          
          npackets = (seq_list[-1] - seq_list[0]) 
 
-         seq_f = np.arange(seq_list[0], seq_list[-1], 625)
+         seq_f = np.arange(seq_list[0], seq_list[-1])
          Arr = np.zeros([npackets, self.npol, self.nfreq], np.complex64)
 
          for pp in range(self.npol):
@@ -668,12 +689,19 @@ class ReadBeamform:
 
                               if len(ind) != 1:
                                    continue
-                              
+              
                               seqint = range(seq_f[seqi], seq_f[seqi+1])
                               
                               #assert len(seqint)==625
 
                               Arr[seqi*625:seqi*625+625, pp, fin] = data_c[ind[0]]
+
+         if rbtime != 1:
+             Arrt = Arr[:len(Arr)//rbtime*rbtime].reshape(-1, rbtime, 2, 1024)
+             Arr = (np.abs(Arrt)**2).sum(1)
+             nnonz = np.where(Arr[:len(Arr)//rbtime*rbtime].reshape(-1, rbtime, 2,1024)!=0).sum(1)
+             
+             Arr /= nonnz
 
          return Arr
 
