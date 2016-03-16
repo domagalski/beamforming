@@ -211,7 +211,6 @@ class ReadBeamform:
                data_str = fo.read(self.frame_size)
 
                if len(data_str) == 0:
-                    print "Fin File"
                     break
 
                header.append(self.parse_header(data_str[:32]))
@@ -254,11 +253,13 @@ class ReadBeamform:
           seq : boolean
                If True, use fpga sequence number. Else use vdif timestamp
           """
-          times = header[:, -3] / np.float(self.nperpacket) + header[:, -2].astype(np.float)
+          times = header[:, -3] / np.float(self.nperpacket) \
+                    + header[:, -2].astype(np.float)
 
           if seq is True:
                seq = header[:, -1] 
                times = (seq - seq[0]) / 625.0**2 + times[0]
+               times = seq / 625.0**2
 
           return self.J2000_to_unix(times)
 
@@ -267,7 +268,7 @@ class ReadBeamform:
 
           fcoh = freq - fftfreq(
                     ntint, dtsample)[:, np.newaxis]
-     
+          
           _fref = freq[np.newaxis]
 
           dang = (self.dispersion_delay_constant * dm * fcoh *
@@ -316,7 +317,7 @@ class ReadBeamform:
 
           return XYreal, XYimag, self.J2000_to_unix(tt_xy)
 
-     def correlate_and_fill(self, data, header, trb=1):
+     def correlate_and_fill(self, data, header, trb=1, freq_select=None):
           """ Take header and data arrays and reorganize
           to produce the full time, pol, freq array
 
@@ -340,8 +341,7 @@ class ReadBeamform:
           slots = set(header[:, 2])
 
           print "Data has", len(slots), "slots: ", slots
-
-
+          print data.shape
           data = data[:, ::2] + 1j * data[:, 1::2]
 
           data_corr = data.real**2 + data.imag**2
@@ -356,12 +356,13 @@ class ReadBeamform:
           tt = np.zeros([data_corr.shape[0] / self.nfr / 2 / len(slots) + 256
                                    , 2*self.npol, self.nfreq], np.float64)
 
+          tlen = []
           for qq in range(self.nfr):
 
                for ii in slots:
 
                     fin = ii + 16 * qq + 128 * np.arange(8)
-
+                    
                     indpol0 = np.where((header[:, 0]==0) & \
                                             (header[:, 1]==qq) & (header[:, 2]==ii))[0]
 
@@ -369,6 +370,8 @@ class ReadBeamform:
                                             (header[:, 1]==qq) & (header[:, 2]==ii))[0]
                     
                     inl = min(len(indpol0), len(indpol1))
+
+                    tlen.append(max(len(indpol0), len(indpol1)))
 
                     if inl < 1:
                          continue
@@ -385,7 +388,7 @@ class ReadBeamform:
 
                     arr[:len(indpol0), 0, fin] = data_corr[indpol0]
                     arr[:len(indpol1), 3, fin] = data_corr[indpol1]
-
+                    
                     arr[:len(XYreal), 1, fin] = XYreal.mean(1)
                     arr[:len(XYimag), 2, fin] = XYimag.mean(1)
 
@@ -399,11 +402,64 @@ class ReadBeamform:
                     if (len(indpol1) >= 1) and (len(indpol1) < arr.shape[0]):
                          tt[:len(indpol1), 3, fin] = self.get_times(\
                                          header[indpol1]).repeat(8).reshape(-1, 8)
+                         
+
+          
+          maxt = np.array(tlen).max()
+          arr = arr[:maxt]
+          tt = tt[:maxt]
 
           return arr, tt
 
+     def cohdd_test(self, data, header, p0, dm):
+         import ch_pulsar_analysis2 as chp
 
-     def correlate_and_fill_cohdd(self, data, header, p0, dm, ngate=64, trb=625**2 / 10):
+         data = data[:, ::2] + 1.0j * data[:, 1::2]
+         data = data.reshape(-1, 625, 8)
+
+         seqno = list(set(header[:, -1]))
+         seqno.sort()
+
+         nframes = (seqno[-1] - seqno[0]) // 625
+         pp=0
+
+         Arr = np.zeros([625 * nframes, 1024], np.complex64)
+         frames = np.arange(seqno[0], seqno[-1]-625, 625)
+
+         assert len(frames)==nframes
+
+         for slot in range(16):
+             for qq in range(8):
+                 for seqi, seq in enumerate(frames):
+                     fin = slot + 16 * qq + 128 * np.arange(8)
+            
+                     ind = np.where((header[:, 0]==pp) & (header[:, 1]==qq) & \
+                                        (header[:, 2]==slot) & (header[:, -1]==seq))[0]            
+                     if len(ind) != 1:
+                         continue
+            
+                     datadd = data[ind]  
+            
+                     #ddcoh = self.get_fft_freq(self.freq[fin], datadd.shape[0], dm)
+                     
+                     #datadd = fft(datadd, axis=0)
+                     #datadd *= ddcoh
+                     #datadd = ifft(datadd, axis=0)
+            
+                     Arr[625*seqi:625*(seqi+1), fin] = datadd
+
+         times = frames / 625.0**2
+         
+         Arr2 = (np.abs(Arr.reshape(-1, 625, 1024))**2).mean(1).transpose()
+         
+         PP = chp.PulsarPipeline(Arr2[:, np.newaxis], times)
+         
+         farr, ic, O = PP.fold(dm, p0)
+
+         return Arr, farr / ic, times
+
+
+     def correlate_and_fill_cohdd(self, data, header, p0, dm, ngate=64, trb=625**2/10.0):
           """ Take header and data arrays and reorganize
           to produce the full time, pol, freq array after
           coherently dedispersing timestream
@@ -430,8 +486,9 @@ class ReadBeamform:
           slots = set(header[:, 2])
 
           print "Data has", len(slots), "slots: ", slots
-          print "/n Folding with p0 %f and DM %f" % (p0, dm)
+          print "\n Folding with p0 %f and DM %f" % (p0, dm)
 
+          trb = np.int(trb)
           data = data[:, ::2] + 1j * data[:, 1::2]
 
           ntimes = data.shape[0] * self.nperpacket // (trb * self.npol * self.nfr)
@@ -441,20 +498,16 @@ class ReadBeamform:
 
           print fold_arr.shape, "fold"
 
-          # Precalculate the coh dedispersion shift phases
-#          dd_coh = self.get_fft_freq(self.ntint, dm)
-
-
           for qq in range(self.nfr):
 
                for ii in slots:
                     fin = ii + 16 * qq + 128 * np.arange(8)
 
                     indpol0 = np.where((header[:, 0]==0) & \
-                                            (header[:, 1]==qq) & (header[:, 2]==ii))[0]
+                                   (header[:, 1]==qq) & (header[:, 2]==ii))[0]
 
                     indpol1 = np.where((header[:, 0]==1) & \
-                                            (header[:, 1]==qq) & (header[:, 2]==ii))[0]
+                                   (header[:, 1]==qq) & (header[:, 2]==ii))[0]
                     
                     inl = min(len(indpol0), len(indpol1))
                     inm = max(len(indpol0), len(indpol1))
@@ -467,16 +520,15 @@ class ReadBeamform:
 
                     frames0 = (seq0 - seq0[0]) / self.nperpacket
                     frames1 = (seq1 - seq1[0]) / self.nperpacket
-                    
-                    data0 = np.zeros([frames0.max() + 1, self.nperpacket * 8], dtype=data.dtype)
-                    data1 = np.zeros([frames1.max() + 1, self.nperpacket * 8], dtype=data.dtype)
 
-                    #seq0 = np.linspace(seq0[0], seq0[-1], len(data0) * self.nperpacket)                    
-                    #seq1 = np.linspace(seq1[0], seq1[-1], len(data1) * self.nperpacket)                    
+                    """
+                    data0 = np.zeros([frames0.max() \
+                                + 1, self.nperpacket * 8], dtype=data.dtype)
+                    data1 = np.zeros([frames1.max() \
+                                + 1, self.nperpacket * 8], dtype=data.dtype)
 
                     seq0 = np.arange(seq0[0], seq0[-1] + self.nperpacket)
                     seq1 = np.arange(seq1[0], seq1[-1] + self.nperpacket)
-
 
                     data0_ = data[indpol0]#.reshape(-1, 8)
                     data1_ = data[indpol1]#.reshape(-1, 8)
@@ -493,7 +545,7 @@ class ReadBeamform:
 #                    print len(dropped_pack0), len(dropped_pack1)
 #                    print seq0.shape, seq1.shape, data0.shape, data1.shape
 
-                    """for dp in dropped_pack0:
+                    for dp in dropped_pack0:
                         fill_pack = np.arange(seq0[dp] + self.nperpacket, seq0[dp+1], self.nperpacket)
                         print dp, seq0[dp+1] - seq0[dp], fill_pack
                         seq0 = np.insert(seq0, dp+1, fill_pack)
@@ -524,12 +576,15 @@ class ReadBeamform:
                     data_dechan0 = fft(data0, axis=0, overwrite_x=True)
                     data_dechan1 = fft(data1, axis=0, overwrite_x=True)
 
-                    data_dechan0 *= dd_coh0
+                    data_dechan0  *= dd_coh0
                     data_dechan1 *= dd_coh1
 
                     data0 = ifft(data_dechan0, axis=0, overwrite_x=True)
                     data1 = ifft(data_dechan1, axis=0, overwrite_x=True)
                     """
+                    data0 = data[indpol0].reshape(-1, 8)
+                    data1 = data[indpol1].reshape(-1, 8)
+                    
                     data_corr0 = data0.real**2 + data0.imag**2
                     data_corr1 = data1.real**2 + data1.imag**2
 
@@ -542,17 +597,14 @@ class ReadBeamform:
                     XYreal = np.concatenate(XYreal, axis=0)
                     XYimag = np.concatenate(XYimag, axis=0)
 
-                    times0 = self.get_times(header[indpol0], seq=False)[0] \
-                                        + (seq0 - seq0[0]) / 625.0**2
-                    times1 = self.get_times(header[indpol1], seq=False)[0] \
-                                        + (seq0 - seq0[0]) / 625.0**2
+                    times0 = (seq0 - seq0[0]) / 625.0**2
+                    times1 = (seq0 - seq0[0]) / 625.0**2
 
                     bins0 = (((times0 / p0) % 1) * ngate).astype(np.int)
                     bins1 = (((times1 / p0) % 1) * ngate).astype(np.int)
 
-
                     data_corr0 = data_corr0[:(len(times0)//trb*trb)].reshape(-1, trb, 8)
-
+              
                     bins0 = bins0[:(len(times0)//trb * trb)].reshape(-1, trb)
 
                     # data_corr0 = data_corr0[:(nimes*trb)]
@@ -560,9 +612,7 @@ class ReadBeamform:
                     # data_corr0 = data_corr0[:(ntimes*trb)]
 
                     for ti in range(bins0.shape[0]):
-
                          for nu in range(self.nfr):
-
                               icount[fin[nu], 0, ti] = np.bincount(bins0[ti], 
                                              data_corr0[ti, :, nu] != 0., ngate)
 
@@ -589,7 +639,45 @@ class ReadBeamform:
 
           return fold_arr, icount
 
+     def reorg_array(self, header, data):
+         
+         # Make complex array of voltages
+         data_c = data[:, ::2] + 1j * data[:, 1::2]
 
+         del data
+
+         data_c = data_c.reshape(-1, 625, 8)
+
+         seq_list = list(set(header[:, -1]))
+         seq_list.sort()
+         
+         npackets = (seq_list[-1] - seq_list[0]) 
+
+         seq_f = np.arange(seq_list[0], seq_list[-1], 625)
+         Arr = np.zeros([npackets, self.npol, self.nfreq], np.complex64)
+
+         for pp in range(self.npol):
+               for qq in range(self.nfr):
+                    for ii in range(16):
+                        for seqi, seq in enumerate(seq_list):
+                            
+                              ind = np.where((header[:, 0]==pp) & (header[:, 1]==qq) & \
+                                                (header[:, 2]==ii) & (header[:, -1]==seq))[0]
+                              
+                              fin = ii + 16 * qq + 128 * np.arange(8)
+
+                              if len(ind) != 1:
+                                   continue
+                              
+                              seqint = range(seq_f[seqi], seq_f[seqi+1])
+                              
+                              #assert len(seqint)==625
+
+                              Arr[seqi*625:seqi*625+625, pp, fin] = data_c[ind[0]]
+
+         return Arr
+
+         
      def correlate_and_reorg(self, header, data):
           """ 
           """
@@ -610,7 +698,7 @@ class ReadBeamform:
           for pp in range(self.npol):
                for qq in range(self.nfr):
                     for ii in range(16):
-                         for tt in range(len(seq_f)):
+                        for tt, pack in enumerate(seq_f):
                               ind = np.where((header[:, 0]==pp) & (header[:, 1]==qq) & \
                                                 (header[:, 2]==ii) & (header[:, -1]==seq_f[tt]))[0]
 
@@ -623,47 +711,43 @@ class ReadBeamform:
 
           return Arr
 
-     def fill_arr(self, header, data, ntimes=None, trb=1):
-          """ Take header and data arrays and reorganize
-          to produce the full time, pol, freq array
+     def corr_and_org(self, header, data):
+         data_corr = data[:, ::2] + 1.0j * data[:, 1::2]
+         data_corr.shape = (-1, 625, 8)
 
-          Parameters
-          ----------
-          header : array_like
-               (nt, 5) array, see self.parse_header
-          data : array_like
-               (nt, ntfr * 2 * self.nfq) array of nt packets
-          ntimes : np.int
-               Number of packets to use
+         seqno = list(set(header[:, -1]))
+         seqno.sort()
+         
+         slots = set(header[:, 2])
+         pp=0
+         nframes = (seqno[-1] - seqno[0]) // 625
 
-          Returns 
-          -------
-          arr : array_like (duhh) np.float64
-               (ntimes * ntfr, npol, nfreq) array of autocorrelations
-          """
-
-          ntfr = data.shape[-1] // (2 * self.nfq)
-
-          data_corr = data[:ntimes, 0::2]**2 + data[:ntimes, 1::2]**2
-          ntimes = data_corr.shape[0]
-
-          header = header[:ntimes]
-
-          data_corr = data_corr[:ntimes // (self.nfr*self.npol) * self.nfr 
-                                 ].reshape(-1, self.nfr, self.npol, ntfr, self.nfq)
-
-          data_corr = data_corr.transpose((0, 3, 2, 1, 4)
-                                 ).reshape(-1, self.npol, self.nfr * self.nfq)
-
-          pos = np.arange(self.nfr)
-          f_ind = self.freq_ind(header[0, 2], np.arange(self.nfq), pos).reshape(-1)
-
-          arr = np.zeros([data_corr.shape[0], self.npol, self.nfreq], np.float64)
-          arr[..., f_ind] = data_corr
-
-          del data_corr
-
-          return self.rebin_time(arr, trb)
+         arr = np.zeros([self.nperpacket * nframes, self.nfreq], np.complex64)
+         print arr.shape
+         frames = np.arange(seqno[0], seqno[-1], self.nperpacket)
+     
+         for ii in slots:
+             for qq in range(8):
+                 for seqi, seq in enumerate(frames):
+                     fin = ii + 16 * qq + 128 * np.arange(8)
+            
+                     ind = np.where((header[:, 0]==pp) & (header[:, 1]==qq) & \
+                               (header[:, 2]==ii) & (header[:, -1]==seq))[0]
+                            
+                     if len(ind) != 1:
+                         continue
+            
+                     
+                     datas = data_corr[ind][0]  
+#                     ddcoh = self.get_fft_freq(self.freq[fin], 2**10, 26.8)#datas.shape[0], 2600.8)
+#                     datas = fft(datas, axis=0)
+#                     datas *= ddcoh
+#                     datas = ifft(datas, axis=0)
+                     
+                     arr[625*seqi:625*(seqi+1), fin] = datas
+         
+#         return (np.abs(arr.reshape(-1, 625, 1024))**2).mean(1)
+         return arr
 
      def corrbin(self, data):
           """ Take data, square and sum to produce
