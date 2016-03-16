@@ -654,13 +654,13 @@ class ReadBeamform:
 
          Returns
          -------
-         Organized array of voltages (if rbtimes==1), autocorrs 
-         if (rbtimes > 1)
+         Organized array of voltages (if rbtime==1), autocorrs 
+         if (rbtime > 1)
          """
 
          # Makes sure rbtimes is an integer greater than 1
-         assert rbtimes >= 1
-         assert rbtimes % 1 == 0
+         assert rbtime >= 1
+         assert rbtime % 1 == 0
 
          # Make complex array of voltages
          data_c = data[:, ::2] + 1j * data[:, 1::2]
@@ -672,7 +672,9 @@ class ReadBeamform:
          seq_list = list(set(header[:, -1]))
          seq_list.sort()
          
-         npackets = (seq_list[-1] - seq_list[0]) 
+         npackets = (seq_list[-1] - seq_list[0] + self.nperpacket) 
+
+         print seq_list[-1], seq_list[0], npackets, len(seq_list)
 
          seq_f = np.arange(seq_list[0], seq_list[-1])
          Arr = np.zeros([npackets, self.npol, self.nfreq], np.complex64)
@@ -691,16 +693,15 @@ class ReadBeamform:
                                    continue
               
                               seqint = range(seq_f[seqi], seq_f[seqi+1])
-                              
-                              #assert len(seqint)==625
-
+                        
                               Arr[seqi*625:seqi*625+625, pp, fin] = data_c[ind[0]]
 
+         del data_c, header
+
          if rbtime != 1:
+             Arr = (np.abs(Arrt)**2)
              Arrt = Arr[:len(Arr)//rbtime*rbtime].reshape(-1, rbtime, 2, 1024)
-             Arr = (np.abs(Arrt)**2).sum(1)
              nnonz = np.where(Arr[:len(Arr)//rbtime*rbtime].reshape(-1, rbtime, 2,1024)!=0).sum(1)
-             
              Arr /= nonnz
 
          return Arr
