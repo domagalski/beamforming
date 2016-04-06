@@ -18,11 +18,9 @@ class ReadBeamform:
      """ A class to read, correlate, and process CHIME vdif data. 
      """
 
-     def __init__(self, pmin=0, pmax=1e7):
+     def __init__(self):
           # Dumb way of setting total number of 
           # packets to read from each file. 1e7 should get to end.
-          self.pmax = pmax 
-          self.pmin = pmin
           self.nfr = 8 # Number of links 
           self.npol = 2
           self.nfq = 8 # Number of frequencies in each frame
@@ -205,9 +203,10 @@ class ReadBeamform:
 
           header = []
           data = []
-          
-          for k in range(np.int(self.pmax)):
 
+          k=0
+
+          while True:
                data_str = fo.read(self.frame_size)
 
                if len(data_str) == 0:
@@ -458,187 +457,6 @@ class ReadBeamform:
 
          return Arr, farr / ic, times
 
-
-     def correlate_and_fill_cohdd(self, data, header, p0, dm, ngate=64, trb=625**2/10.0):
-          """ Take header and data arrays and reorganize
-          to produce the full time, pol, freq array after
-          coherently dedispersing timestream
-
-          Parameters
-          ----------
-          data : array_like
-               (nt, ntfr * 2 * self.nfq) array of nt packets
-          header : array_like
-               (nt, 5) array, see self.parse_header
-          dm : np.float
-               dispersion measure pc cm**-3
-          ntimes : np.int
-               Number of packets to use
-
-          Returns 
-          -------
-          arr : array_like (duhh) np.float64
-               (ntimes * ntfr, npol, nfreq) array of autocorrelations
-          tt : array_like 
-               Same shape as arr, since each frequency has its own time vector
-          """
-
-          slots = set(header[:, 2])
-
-          print "Data has", len(slots), "slots: ", slots
-          print "\n Folding with p0 %f and DM %f" % (p0, dm)
-
-          trb = np.int(trb)
-          data = data[:, ::2] + 1j * data[:, 1::2]
-
-          ntimes = data.shape[0] * self.nperpacket // (trb * self.npol * self.nfr)
-
-          fold_arr = np.zeros([self.nfreq, self.npol**2, ntimes, ngate], np.float32)
-          icount = fold_arr.copy()
-
-          print fold_arr.shape, "fold"
-
-          for qq in range(self.nfr):
-
-               for ii in slots:
-                    fin = ii + 16 * qq + 128 * np.arange(8)
-
-                    indpol0 = np.where((header[:, 0]==0) & \
-                                   (header[:, 1]==qq) & (header[:, 2]==ii))[0]
-
-                    indpol1 = np.where((header[:, 0]==1) & \
-                                   (header[:, 1]==qq) & (header[:, 2]==ii))[0]
-                    
-                    inl = min(len(indpol0), len(indpol1))
-                    inm = max(len(indpol0), len(indpol1))
-
-                    if inl < 1:
-                         continue
-
-                    seq0 = header[indpol0, -1]
-                    seq1 = header[indpol1, -1]
-
-                    frames0 = (seq0 - seq0[0]) / self.nperpacket
-                    frames1 = (seq1 - seq1[0]) / self.nperpacket
-
-                    """
-                    data0 = np.zeros([frames0.max() \
-                                + 1, self.nperpacket * 8], dtype=data.dtype)
-                    data1 = np.zeros([frames1.max() \
-                                + 1, self.nperpacket * 8], dtype=data.dtype)
-
-                    seq0 = np.arange(seq0[0], seq0[-1] + self.nperpacket)
-                    seq1 = np.arange(seq1[0], seq1[-1] + self.nperpacket)
-
-                    data0_ = data[indpol0]#.reshape(-1, 8)
-                    data1_ = data[indpol1]#.reshape(-1, 8)
-
-                    data0[frames0] = data0_
-                    data1[frames1] = data1_
-
-                    data0.shape = (-1, 8)
-                    data1.shape = (-1, 8)
-
-                    dropped_pack0 = np.where(np.diff(seq0)!=self.nperpacket)[0]
-                    dropped_pack1 = np.where(np.diff(seq1)!=self.nperpacket)[0]
-
-#                    print len(dropped_pack0), len(dropped_pack1)
-#                    print seq0.shape, seq1.shape, data0.shape, data1.shape
-
-                    for dp in dropped_pack0:
-                        fill_pack = np.arange(seq0[dp] + self.nperpacket, seq0[dp+1], self.nperpacket)
-                        print dp, seq0[dp+1] - seq0[dp], fill_pack
-                        seq0 = np.insert(seq0, dp+1, fill_pack)
-                        data0 = np.insert(data1, dp+1, 
-                                          np.repeat(0.0, len(fill_pack))[:, np.newaxis], axis=0)
-
-                    for dp in dropped_pack1:
-                        fill_pack = np.arange(seq1[dp] + self.nperpacket, seq1[dp+1], self.nperpacket)
-                        seq1 = np.insert(seq1, dp+1, fill_pack)
-                        data1 = np.insert(data1, dp+1, 
-                                          np.repeat(0.0, len(fill_pack))[:, np.newaxis], axis=0)
-
-#                    print seq0.shape, seq1.shape, data0.shape, data1.shape
-                    
-
-                    if not (np.diff(seq0)==self.nperpacket).all():
-                         print "Dropped packet, shouldn't fft"
-                         continue
-
-
-
-#                    data0 = data0[:self.ntint]
-#                    data1 = data1[:self.ntint]
-
-                    dd_coh0 = self.get_fft_freq(self.freq[fin], data0.shape[0], dm)  
-                    dd_coh1 = self.get_fft_freq(self.freq[fin], data1.shape[0], dm)
-
-                    data_dechan0 = fft(data0, axis=0, overwrite_x=True)
-                    data_dechan1 = fft(data1, axis=0, overwrite_x=True)
-
-                    data_dechan0  *= dd_coh0
-                    data_dechan1 *= dd_coh1
-
-                    data0 = ifft(data_dechan0, axis=0, overwrite_x=True)
-                    data1 = ifft(data_dechan1, axis=0, overwrite_x=True)
-                    """
-                    data0 = data[indpol0].reshape(-1, 8)
-                    data1 = data[indpol1].reshape(-1, 8)
-                    
-                    data_corr0 = data0.real**2 + data0.imag**2
-                    data_corr1 = data1.real**2 + data1.imag**2
-
-                    indpol0 = indpol0[:inl]
-                    indpol1 = indpol1[:inl]
-
-                    XYreal, XYimag, timesxy = self.correlate_xy(
-                                 data0, data1, header, indpol0, indpol1)
-
-                    XYreal = np.concatenate(XYreal, axis=0)
-                    XYimag = np.concatenate(XYimag, axis=0)
-
-                    times0 = (seq0 - seq0[0]) / 625.0**2
-                    times1 = (seq0 - seq0[0]) / 625.0**2
-
-                    bins0 = (((times0 / p0) % 1) * ngate).astype(np.int)
-                    bins1 = (((times1 / p0) % 1) * ngate).astype(np.int)
-
-                    data_corr0 = data_corr0[:(len(times0)//trb*trb)].reshape(-1, trb, 8)
-              
-                    bins0 = bins0[:(len(times0)//trb * trb)].reshape(-1, trb)
-
-                    # data_corr0 = data_corr0[:(nimes*trb)]
-                    # data_corr0 = data_corr0[:(ntimes*trb)]
-                    # data_corr0 = data_corr0[:(ntimes*trb)]
-
-                    for ti in range(bins0.shape[0]):
-                         for nu in range(self.nfr):
-                              icount[fin[nu], 0, ti] = np.bincount(bins0[ti], 
-                                             data_corr0[ti, :, nu] != 0., ngate)
-
-                              fold_arr[fin[nu], 0, ti] = np.bincount(bins0[ti], 
-                                             weights=data_corr0[ti, :, nu], minlength=ngate)
-
-                         #icount[fin, 1, ti] = np.bincount(binsxy, XYreal != 0., ngate)    
-
-                         #icount[fin, 2, ti] = np.bincount(binsxy, XYimag != 0., ngate)  
-
-                         #icount[fin, 3, ti] = np.bincount(bins1, data_corr1 != 0., ngate)   
-
-
-
-                         # fold_arr[fin, 1, ti, :] = np.bincount(binsxy, 
-                         #                     weights=XYreal, minlength=ngate)
-
-                         # fold_arr[fin, 2, ti, :] = np.bincount(binxy, 
-                         #                     weights=XYimag, minlength=ngate)
-
-                         # fold_arr[fin, -1, ti, :] = np.bincount(bins1, 
-                         #                     weights=data_corr1, minlength=ngate)
-
-
-          return fold_arr, icount
-
      def reorg_array(self, header, data, rbtime=1):
          """ Reorganizes voltages and returns contiguous array
 
@@ -672,9 +490,8 @@ class ReadBeamform:
          seq_list = list(set(header[:, -1]))
          seq_list.sort()
          
+         # Get total number of packets between first and last
          npackets = (seq_list[-1] - seq_list[0] + self.nperpacket) 
-
-         print seq_list[-1], seq_list[0], npackets, len(seq_list)
 
          seq_f = np.arange(seq_list[0], seq_list[-1])
          Arr = np.zeros([npackets, self.npol, self.nfreq], np.complex64)
