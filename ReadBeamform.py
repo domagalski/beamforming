@@ -356,7 +356,7 @@ class ReadBeamform:
                                    , 2*self.npol, self.nfreq], np.float64)
 
           tlen = []
-          for qq in range(self.nfr):
+          for qq in xrange(self.nfr):
 
                for ii in slots:
 
@@ -427,8 +427,8 @@ class ReadBeamform:
 
          assert len(frames)==nframes
 
-         for slot in range(16):
-             for qq in range(8):
+         for slot in xrange(16):
+             for qq in xrange(8):
                  for seqi, seq in enumerate(frames):
                      fin = slot + 16 * qq + 128 * np.arange(8)
             
@@ -489,29 +489,30 @@ class ReadBeamform:
 
          seq_list = list(set(header[:, -1]))
          seq_list.sort()
-         
+         seq_list_zero = seq_list - seq_list[0]
+
          # Get total number of packets between first and last
          npackets = (seq_list[-1] - seq_list[0] + self.nperpacket) 
 
          seq_f = np.arange(seq_list[0], seq_list[-1])
-         Arr = np.zeros([npackets, self.npol, self.nfreq], np.complex64)
+         Arr = np.zeros([625*len(seq_list), self.npol, self.nfreq], np.complex64)
 
-         for pp in range(self.npol):
-               for qq in range(self.nfr):
-                    for ii in range(16):
-                        for seqi, seq in enumerate(seq_list):
-                            
-                              ind = np.where((header[:, 0]==pp) & (header[:, 1]==qq) & \
-                                                (header[:, 2]==ii) & (header[:, -1]==seq))[0]
+         for pp in xrange(self.npol):
+             for qq in xrange(self.nfr):
+                 for ii in xrange(16):
+                     for ss in xrange(len(seq_list)):
+                            seq=seq_list[ss] 
+                            ind = np.where((header[:, 0]==pp) & (header[:, 1]==qq) & \
+                                           (header[:, 2]==ii) & (header[:, -1]==seq))[0]
                               
-                              fin = ii + 16 * qq + 128 * np.arange(8)
+                            fin = ii + 16 * qq + 128 * np.arange(8)
 
-                              if len(ind) != 1:
-                                   continue
-              
-                              seqint = range(seq_f[seqi], seq_f[seqi+1])
-                        
-                              Arr[seqi*625:seqi*625+625, pp, fin] = data_c[ind[0]]
+                            if len(ind) != 1:
+                                continue
+
+                            tti = seq_list_zero[ss]
+
+                            Arr[tti:tti+625, pp, fin] = data_c[ind[0]]
 
          del data_c, header
 
