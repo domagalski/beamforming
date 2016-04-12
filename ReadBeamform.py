@@ -607,6 +607,14 @@ class ReadBeamform:
 
           return data_corr
 
+mask = [142, 143, 144, 145, 146, 147, 148, 149, 150, 151, 152, 153, 553,
+       554, 555, 556, 557, 558, 559, 560, 561, 562, 563, 564, 565, 566,
+       567, 568, 584, 585, 586, 587, 588, 589, 590, 591, 592, 593, 594,
+       595, 596, 597, 598, 599, 631, 632, 633, 634, 635, 636, 637, 638,
+       639, 640, 641, 642, 643, 644, 677, 678, 679, 680, 681, 682, 683,
+       684, 685, 686, 687, 688, 689, 690, 691, 754, 755, 756, 757, 758,
+       759, 760, 762, 763, 786, 787, 789, 808, 809, 846, 882, 895, 975]
+
 def MJD_to_unix(MJD):
      
      return (MJD + 2400000.5 - 2440587.5) * 86400.0
@@ -615,3 +623,22 @@ def unix_to_MJD(t_unix):
      
      return (t_unix / 86400.0) + 2440587.5 - 2400000.5
 
+def plot_waterfall(arr, figname='onm.png'):
+
+    # Assume arr is a (ntime, nfreq) array, or transpose
+    assert len(arr.shape) == 2
+
+    import matplotlib.pyplot as plt
+
+    fig = plt.figure(figsize=(14, 14))
+
+    arr /= np.median(arr, axis=0)[None]
+    arr[np.isnan(arr)] = 0.0
+
+    stdev = np.std(arr)
+
+    plt.imshow(arr, interpolation='nearest',
+            aspect='auto', cmap='RdBu', vmax=10, vmin=0.0)
+
+    plt.colorbar()
+    plt.savefig(figname)
