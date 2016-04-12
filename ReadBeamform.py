@@ -495,7 +495,8 @@ class ReadBeamform:
          npackets = (seq_list[-1] - seq_list[0] + self.nperpacket) 
 
          seq_f = np.arange(seq_list[0], seq_list[-1])
-         Arr = np.zeros([625*len(seq_list), self.npol, self.nfreq], np.complex64)
+#         Arr = np.zeros([625*len(seq_list), self.npol, self.nfreq], np.complex64)
+         Arr = np.zeros([npackets, self.npol, self.nfreq], np.complex64)
 
          for pp in xrange(self.npol):
              for qq in xrange(self.nfr):
