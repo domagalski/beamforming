@@ -518,13 +518,18 @@ class ReadBeamform:
          del data_c, header
 
          if rbtime != 1:
-             Arr = (np.abs(Arr)**2)
-             Arrt = Arr[:len(Arr)//rbtime*rbtime].reshape(-1, rbtime, 2, self.nfreq)
-             nnonz = np.where(Arr[:len(Arr)//rbtime*rbtime].reshape(-1, rbtime, 2, self.nfreq)!=0)[0].sum(1)
-             Arr /= nonnz
-             Arr[np.isnan(Arr)] = 0.0
+             Arr = np.abs(Arr)**2
 
-         return Arr
+             Arrt = Arr[:len(Arr)//rbtime*rbtime].reshape(-1, rbtime, 2, self.nfreq)
+             nnonz = np.where(Arrt!=0, 1, 0)[0].sum(1)
+
+             print Arrt.shape, nonnz.shape
+             Arrt /= nonnz[:, None]
+             Arr[np.isnan(Arr)] = 0.0
+             
+             return Arr
+         else:
+             return Arr
 
          
      def correlate_and_reorg(self, header, data):
