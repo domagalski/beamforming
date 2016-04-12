@@ -517,10 +517,11 @@ class ReadBeamform:
          del data_c, header
 
          if rbtime != 1:
-             Arr = (np.abs(Arrt)**2)
+             Arr = (np.abs(Arr)**2)
              Arrt = Arr[:len(Arr)//rbtime*rbtime].reshape(-1, rbtime, 2, 1024)
              nnonz = np.where(Arr[:len(Arr)//rbtime*rbtime].reshape(-1, rbtime, 2,1024)!=0).sum(1)
              Arr /= nonnz
+             Arr[np.isnan(Arr)] = 0.0
 
          return Arr
 
@@ -637,7 +638,7 @@ def plot_waterfall(arr, figname='onm.png'):
 
     stdev = np.std(arr)
 
-    plt.imshow(arr, interpolation='nearest',
+    plt.imshow(arr.transpose(), interpolation='nearest',
             aspect='auto', cmap='RdBu', vmax=10, vmin=0.0)
 
     plt.colorbar()
