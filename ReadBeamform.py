@@ -519,8 +519,8 @@ class ReadBeamform:
 
          if rbtime != 1:
              Arr = (np.abs(Arr)**2)
-             Arrt = Arr[:len(Arr)//rbtime*rbtime].reshape(-1, rbtime, 2, 1024)
-             nnonz = np.where(Arr[:len(Arr)//rbtime*rbtime].reshape(-1, rbtime, 2,1024)!=0).sum(1)
+             Arrt = Arr[:len(Arr)//rbtime*rbtime].reshape(-1, rbtime, 2, self.nfreq)
+             nnonz = np.where(Arr[:len(Arr)//rbtime*rbtime].reshape(-1, rbtime, 2, self.nfreq)!=0)[0].sum(1)
              Arr /= nonnz
              Arr[np.isnan(Arr)] = 0.0
 
