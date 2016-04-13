@@ -523,8 +523,8 @@ class ReadBeamform:
              Arrt = Arr[:len(Arr)//rbtime*rbtime].reshape(-1, rbtime, 2, self.nfreq)
              nnonz = np.where(Arrt!=0, 1, 0)[0].sum(1)
 
-             print Arrt.shape, nonnz.shape
-             Arrt /= nonnz[:, None]
+             print Arrt.shape, nnonz.shape
+             Arrt /= nnonz[:, None]
              Arr[np.isnan(Arr)] = 0.0
              
              return Arr
@@ -639,13 +639,13 @@ def plot_waterfall(arr, figname='onm.png'):
 
     fig = plt.figure(figsize=(14, 14))
 
-    arr /= np.median(arr, axis=0)[None]
-    arr[np.isnan(arr)] = 0.0
+#    arr /= np.median(arr, axis=0)[None]
+#    arr[np.isnan(arr)] = 0.0
 
-    stdev = np.std(arr)
+#    stdev = np.std(arr)
 
     plt.imshow(arr.transpose(), interpolation='nearest',
-            aspect='auto', cmap='RdBu', vmax=10, vmin=0.0)
+            aspect='auto', cmap='RdBu')#, vmax=10, vmin=0.0)
 
     plt.colorbar()
     plt.savefig(figname)

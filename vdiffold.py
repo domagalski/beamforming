@@ -152,10 +152,11 @@ for ii in range(f_start, f_start + nfiles, f_step):
 
      if make_highres_plot is True:
           print "Making high res plot"
-          arr_highres = RB.reorg_array(header, data)
+          arr_highres = RB.reorg_array(header, data)#, rbtime=625)
           arr_highres = np.abs(arr_highres.reshape(-1, RB.nperpacket, npol, nfreq))**2
           arr_highres = arr_highres.sum(1)
 
+          print arr_highres.shape
           rbf.plot_waterfall(arr_highres.sum(1), figname='testimage.png')
 
      times_o = RB.get_times(header, False)
