@@ -197,7 +197,7 @@ class ReadBeamform:
           header : array_like
                (nt, 6) array, see self.parse_header
           data : array_like 
-               (nt, ntfr * 2 * nfq)                                                                                                                                                     
+               (nt, ntfr * 2 * nfq)                                  
           """
           fo = open(fn)
 
@@ -211,8 +211,10 @@ class ReadBeamform:
 
                if len(data_str) == 0:
                     break
-
+               
+               # Read in first 32 bytes of frame
                header.append(self.parse_header(data_str[:32]))
+               # Read in final 5000 bytes of frame 
                data.append(self.str_to_int(data_str[32:])[np.newaxis])
 
           if len(header) >= 1:
@@ -363,14 +365,15 @@ class ReadBeamform:
                     fin = ii + 16 * qq + 128 * np.arange(8)
                     
                     indpol0 = np.where((header[:, 0]==0) & \
-                                            (header[:, 1]==qq) & (header[:, 2]==ii))[0]
+                          (header[:, 1]==qq) & (header[:, 2]==ii))[0]
 
                     indpol1 = np.where((header[:, 0]==1) & \
-                                            (header[:, 1]==qq) & (header[:, 2]==ii))[0]
+                          (header[:, 1]==qq) & (header[:, 2]==ii))[0]
                     
                     inl = min(len(indpol0), len(indpol1))
 
-                    tlen.append(max(len(indpol0), len(indpol1)))
+                    maxlen = max(len(indpol0), len(indpol1))
+                    tlen.append(maxlen)
 
                     if inl < 1:
                          continue
@@ -379,11 +382,12 @@ class ReadBeamform:
                     indpol1 = indpol1[:inl]
                     
                     XYreal, XYimag, tt_xy = self.correlate_xy(
-                                 data[indpol0], data[indpol1], header, indpol0, indpol1)
+                         data[indpol0], data[indpol1], header, indpol0, indpol1)
 
-                    XYreal = np.concatenate(XYreal, axis=0).reshape(-1, self.nperpacket, 8)
-                    XYimag = np.concatenate(XYimag, axis=0).reshape(-1, self.nperpacket, 8)
-
+                    XYreal = np.concatenate(XYreal, 
+                               axis=0).reshape(-1, self.nperpacket, 8)
+                    XYimag = np.concatenate(XYimag, 
+                               axis=0).reshape(-1, self.nperpacket, 8)
 
                     arr[:len(indpol0), 0, fin] = data_corr[indpol0]
                     arr[:len(indpol1), 3, fin] = data_corr[indpol1]
@@ -393,16 +397,16 @@ class ReadBeamform:
 
                     tt[:len(tt_xy), 1, fin] = np.array(tt_xy).repeat(8).reshape(-1, 8)
                     tt[:len(tt_xy), 2, fin] = tt[:len(tt_xy), 1, fin].copy()
-
+                    
+                    
                     if (len(indpol0) >= 1) and (len(indpol0) < arr.shape[0]): 
                          tt[:len(indpol0), 0, fin] = self.get_times(\
-                                         header[indpol0]).repeat(8).reshape(-1, 8)
+                                header[indpol0]).repeat(8).reshape(-1, 8)
 
                     if (len(indpol1) >= 1) and (len(indpol1) < arr.shape[0]):
                          tt[:len(indpol1), 3, fin] = self.get_times(\
-                                         header[indpol1]).repeat(8).reshape(-1, 8)
-                         
-
+                                header[indpol1]).repeat(8).reshape(-1, 8)
+                    
           
           maxt = np.array(tlen).max()
           arr = arr[:maxt]
@@ -630,7 +634,7 @@ def unix_to_MJD(t_unix):
      
      return (t_unix / 86400.0) + 2440587.5 - 2400000.5
 
-def plot_waterfall(arr, figname='onm.png'):
+def plot_waterfall(arr, figname):
 
     # Assume arr is a (ntime, nfreq) array, or transpose
     assert len(arr.shape) == 2
@@ -639,13 +643,29 @@ def plot_waterfall(arr, figname='onm.png'):
 
     fig = plt.figure(figsize=(14, 14))
 
-#    arr /= np.median(arr, axis=0)[None]
+    arr /= np.median(arr, axis=0)[None]
 #    arr[np.isnan(arr)] = 0.0
 
 #    stdev = np.std(arr)
+    arr[:, mask] = 0.0
 
     plt.imshow(arr.transpose(), interpolation='nearest',
-            aspect='auto', cmap='RdBu')#, vmax=10, vmin=0.0)
+            aspect='auto', cmap='RdBu', vmax=5, vmin=-1)
 
     plt.colorbar()
     plt.savefig(figname)
+    print "Saved to %s" % figname
+
+def plot_1d(arr, figname):
+
+    # Assume arr is a (ntime, nfreq) array, or transpose
+    assert len(arr.shape) == 1
+
+    import matplotlib.pyplot as plt
+
+    fig = plt.figure(figsize=(14, 14))
+
+    plt.plot(arr)
+
+    plt.savefig(figname)
+    print "Saved to %s" % figname
