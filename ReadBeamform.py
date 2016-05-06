@@ -253,16 +253,50 @@ class ReadBeamform:
 
           seq : boolean
                If True, use fpga sequence number. Else use vdif timestamp
+
+          Returns
+          -------
+          fpga times, unix times
+          """
+          times_cpu = header[:, -3] / np.float(self.nperpacket) \
+                    + header[:, -2].astype(np.float)
+
+          # May 2 edits
+          if seq is False:
+
+               return times_cpu, []
+
+          if seq is True:
+               seq = header[:, -1] 
+               times = seq / 625.0**2
+
+               return times, self.J2000_to_unix(times - times[0] + times_cpu[0])
+
+
+     def first_get_times(self, header, seq=True):
+          """ Takes two time columns of header (seconds since
+          J2000 and packet number) and constructs time array in
+          seconds
+
+          Parameters
+          ----------
+          header : 
+
+          seq : boolean
+               If True, use fpga sequence number. Else use vdif timestamp
           """
           times = header[:, -3] / np.float(self.nperpacket) \
                     + header[:, -2].astype(np.float)
+          
 
           if seq is True:
                seq = header[:, -1] 
                times = (seq - seq[0]) / 625.0**2 + times[0]
                times = seq / 625.0**2
 
-          return self.J2000_to_unix(times)
+          times = header[:, -1] * 2.56e-6
+          #liam edit
+          return times#self.J2000_to_unix(times)
 
      def get_fft_freq(self, freq, ntint, dm):
           dtsample = 2 * self.nfreq * self.dt
@@ -279,8 +313,46 @@ class ReadBeamform:
 
           return dd_coh
 
-
      def correlate_xy(self, data_pol0, data_pol1, header, indpol0, indpol1):
+
+          seq0 = header[indpol0, -1]
+          seq1 = header[indpol1, -1]
+
+          XYreal = []
+          XYimag = []
+          
+          seq_xy = []
+
+          data_rp0 = data_pol0.real
+          data_ip0 = data_pol0.imag
+
+          data_rp1 = data_pol1.real
+          data_ip1 = data_pol1.imag
+
+          for t0, tt in enumerate(seq0):
+
+               t1 = np.where(seq1 == tt)[0]
+
+               if len(t1) < 1:
+                    continue
+
+               seq_xy.append(tt)
+
+               xyreal = data_rp0[t0] * data_rp1[t1] + data_ip0[t0] * data_ip1[t1]
+               xyimag = data_ip0[t0] * data_rp1[t1] - data_rp0[t0] * data_ip1[t1]
+
+               XYreal.append(xyreal)
+               XYimag.append(xyimag)
+
+          times = header[indpol0, -3] / np.float(self.nperpacket) 
+          times += header[indpol0, -2].astype(np.float)
+
+          # All May 2
+          tt_xy = np.array(seq_xy) / 625.0**2
+
+          return XYreal, XYimag
+
+     def first_correlate_xy(self, data_pol0, data_pol1, header, indpol0, indpol1):
 
           seq0 = header[indpol0, -1]
           seq1 = header[indpol1, -1]
@@ -354,12 +426,109 @@ class ReadBeamform:
           arr = np.zeros([data_corr.shape[0] / self.nfr / 2 / len(slots) + 256
                                    , 2*self.npol, self.nfreq], np.float64)
 
+          # May 2 change float32 from 64
+          tt = np.zeros([data_corr.shape[0] / self.nfr / 2 / len(slots) + 256
+                                   , 2*self.npol, self.nfreq], np.float32)
+
+          tlen = []
+          for qq in xrange(self.nfr):
+
+               for ii in slots:
+
+                    fin = ii + 16 * qq + 128 * np.arange(8)
+                    
+                    indpol0 = np.where((header[:, 0]==0) & \
+                                            (header[:, 1]==qq) & (header[:, 2]==ii))[0]
+
+                    indpol1 = np.where((header[:, 0]==1) & \
+                                            (header[:, 1]==qq) & (header[:, 2]==ii))[0]
+                    
+                    inl = min(len(indpol0), len(indpol1))
+
+                    tlen.append(max(len(indpol0), len(indpol1)))
+
+                    if inl < 1:
+                         continue
+
+                    indpol0 = indpol0[:inl]
+                    indpol1 = indpol1[:inl]
+                    
+                    # May 2 edit
+                    XYreal, XYimag = self.correlate_xy(
+                                 data[indpol0], data[indpol1], header, indpol0, indpol1)
+
+                    XYreal = np.concatenate(XYreal, axis=0).reshape(-1, self.nperpacket, 8)
+                    XYimag = np.concatenate(XYimag, axis=0).reshape(-1, self.nperpacket, 8)
+
+
+                    arr[:len(indpol0), 0, fin] = data_corr[indpol0]
+                    arr[:len(indpol1), 3, fin] = data_corr[indpol1]
+                    
+                    arr[:len(XYreal), 1, fin] = XYreal.mean(1)
+                    arr[:len(XYimag), 2, fin] = XYimag.mean(1)
+
+                    tt_xy0 = self.get_times(header[indpol0])[0].repeat(8).reshape(-1, 8)
+
+                    tt[:len(tt_xy0), 1, fin] = tt_xy0
+                    tt[:len(tt_xy0), 2, fin] = tt[:len(tt_xy0), 1, fin].copy()
+
+                    # May 2 edit
+                    if (len(indpol0) >= 1) and (len(indpol0) < arr.shape[0]): 
+                         tt[:len(indpol0), 0, fin] = self.get_times(\
+                                         header[indpol0])[0].repeat(8).reshape(-1, 8)
+
+
+                    if (len(indpol1) >= 1) and (len(indpol1) < arr.shape[0]):
+                         tt[:len(indpol1), 3, fin] = self.get_times(\
+                                         header[indpol1])[0].repeat(8).reshape(-1, 8)
+          
+          maxt = np.array(tlen).max()
+          arr = arr[:maxt]
+          tt = tt[:maxt]
+
+          return arr, tt
+
+     def first_correlate_and_fill(self, data, header, trb=1, freq_select=None):
+          """ Take header and data arrays and reorganize
+          to produce the full time, pol, freq array
+
+          Parameters
+          ----------
+          data : array_like
+               (nt, ntfr * 2 * self.nfq) array of nt packets
+          header : array_like
+               (nt, 5) array, see self.parse_header
+          ntimes : np.int
+               Number of packets to use
+
+          Returns 
+          -------
+          arr : array_like (duhh) np.float64
+               (ntimes * ntfr, npol, nfreq) array of autocorrelations
+          tt : array_like 
+               Same shape as arr, since each frequency has its own time vector
+          """
+
+          slots = set(header[:, 2])
+
+          print "Data has", len(slots), "slots: ", slots
+          print data.shape
+          data = data[:, ::2] + 1j * data[:, 1::2]
+
+          data_corr = data.real**2 + data.imag**2
+          data_corr = data_corr.reshape(-1, self.nperpacket, 8).mean(1)
+
+          data_real = data.real.reshape(-1, self.nperpacket, 8).transpose((0, 2, 1))
+          data_imag = data.imag.reshape(-1, self.nperpacket, 8).transpose((0, 2, 1))
+
+          arr = np.zeros([data_corr.shape[0] / self.nfr / 2 / len(slots) + 256
+                                   , 2*self.npol, self.nfreq], np.float64)
+
           tt = np.zeros([data_corr.shape[0] / self.nfr / 2 / len(slots) + 256
                                    , 2*self.npol, self.nfreq], np.float64)
 
           tlen = []
           for qq in xrange(self.nfr):
-
                for ii in slots:
 
                     fin = ii + 16 * qq + 128 * np.arange(8)
@@ -626,6 +795,17 @@ mask = [142, 143, 144, 145, 146, 147, 148, 149, 150, 151, 152, 153, 553,
        684, 685, 686, 687, 688, 689, 690, 691, 754, 755, 756, 757, 758,
        759, 760, 762, 763, 786, 787, 789, 808, 809, 846, 882, 895, 975]
 
+def mean_nonz(arr, axis=0):
+    
+    # Get total of nonzeros entries along arg axis
+    nnonz = np.where(arr!=0, 1, 0)[0]
+    print nnonz.shape, arr.shape
+    arr = arr.sum(axis) / nnonz.sum(axis)
+    
+    arr[arr!=arr] = 0.0
+
+    return arr
+
 def MJD_to_unix(MJD):
      
      return (MJD + 2400000.5 - 2440587.5) * 86400.0
@@ -643,17 +823,19 @@ def plot_waterfall(arr, figname):
 
     fig = plt.figure(figsize=(14, 14))
 
+    arr[:, mask] = 0.0
+    arr = arr[39:240]
     arr /= np.median(arr, axis=0)[None]
-#    arr[np.isnan(arr)] = 0.0
+    arr[np.isnan(arr)] = 0.0
 
 #    stdev = np.std(arr)
-    arr[:, mask] = 0.0
 
     plt.imshow(arr.transpose(), interpolation='nearest',
-            aspect='auto', cmap='RdBu', vmax=5, vmin=-1)
+            aspect='auto', cmap='RdBu', vmax=1.05, vmin=0.95)
 
     plt.colorbar()
     plt.savefig(figname)
+
     print "Saved to %s" % figname
 
 def plot_1d(arr, figname):
