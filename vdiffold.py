@@ -19,12 +19,15 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
-accumulate = False
+assert len(sys.argv) == 6, "Expecting %s %s %s %s %s" % \
+    ("fdir", "outfile", "pulsar", "file_number_start", "number_of_files")
+
+accumulate = True
 reamalgamate = True
 reamalgamate_first = False # In case data already folded
 
-timestream_save = False # Don't do anything pulsar related
-dd_timestream = True # Produce dedispersed timestream, among other things
+timestream_save = True # Don't do anything pulsar related
+dd_timestream = False # Produce dedispersed timestream, among other things
 fold_full = False
 coherent_dd = False
 
@@ -37,7 +40,7 @@ nfreq = 1024
 trb = 2000 # Factor to rebin data array by
 f_start = np.int(sys.argv[4])
 nfiles = np.int(sys.argv[5]) # Total number of files to us
-f_step = 1 # step between files
+f_step = 15 # step between files
 n_save = 30 # Save down every n_save files
 
 f_dir = '/drives/G/*/' + sys.argv[1]
@@ -85,13 +88,21 @@ def amalgamate(outfile, taxis=-2):
      for fnm in list_corr:
           ff = h5py.File(fnm, 'r')
           arr = ff['arr'][:]
-
+          print arr.shape
           if len(arr.shape) < 3:
                continue
 
           Arr.append(arr)
 
      Arr = np.concatenate(Arr, axis=taxis)
+     
+     fig = plt.figure(figsize=(10,10))
+     plt.plot(Arr[:, 0, 913])
+     plt.plot(Arr[:, 0, 307])
+     plt.plot(Arr[:, 0, 300])
+     plt.plot(Arr[:, 0, 500])
+     plt.savefig('heremo.png')
+     #Arr = Arr[:len(Arr)//100*100].reshape(-1, 10, 4, 1024).mean(1)
 
      print "Writing to %s" % (outfile + 'full.hdf5')
 
@@ -103,12 +114,13 @@ def amalgamate(outfile, taxis=-2):
      return Arr
 
 if reamalgamate_first:
-     if dd_timestream==True:
+     if (dd_timestream or timestream_save):
           taxis=0
      else:
           taxis=-2
 
      Arr = amalgamate(outfile, taxis=taxis)
+     Arr = Arr[:len(Arr)//10*10].reshape(-1, 10, 4, 1024).mean(1)
 
      if (plot_spec is True):
           #if fold_full is True:
@@ -147,7 +159,7 @@ for ii in range(f_start, f_start + nfiles, f_step):
 
      header, data = read_arrs
 
-     print RB.get_times(header)[0][0]
+     print "Unix time: %f" % RB.get_times(header)[1][0]
 
      if make_highres_plot is True:# and k==1:
           print "Making high res plot"
