@@ -1,3 +1,13 @@
+# This code provides the tools for generating
+# calibration solution out of transiting 
+# point sources. 
+#
+#
+#
+#
+#
+
+
 import sys
 
 import numpy as np
@@ -120,8 +130,33 @@ def read_data(reader_obj, src, prod_sel, freq_sel=None, del_t=50):
 
     return and_obj
 
-def solve_untrans(filename, corrs, feeds, inp, 
+def solve_ps_transit(filename, corrs, feeds, inp, 
           src, nfreq=1024, transposed=False, nfeed=128):
+    """ Function that fringestops time slice 
+    where point source is in the beam, takes 
+    all correlations for a given polarization, and then 
+    eigendecomposes the correlation matrix freq by freq
+    after removing the fpga phases. It will also 
+    plot intermediate steps to verify the phase solution.
+
+    Parameters
+    ----------
+    filename : np.str
+         Full-path filename 
+    corrs : list
+         List of correlations to use in solver
+    feeds : list
+         List of feeds to use
+    inp   : 
+         Correlator inputs (output of ch_util.tools.get_correlator_inputs)
+    src   : ephem.FixedBody
+         Source to calibrate off of. e.g. ch_util.ephemeris.TauA
+    
+    Returns
+    -------
+    Gains : np.array
+         Complex gain array (nfreq, nfeed) 
+    """
 
     del_t = 400
 
