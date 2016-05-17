@@ -1,12 +1,6 @@
 # This code provides the tools for generating
 # calibration solution out of transiting 
-# point sources. 
-#
-#
-#
-#
-#
-
+# point sources.
 
 import sys
 
@@ -27,13 +21,13 @@ import matplotlib.pyplot as plt
 
 def plt_gains(vis, nu, img_name='out.png', bad_chans=[]):
     """ Plot grid of transit phases to check if both 
-    fringestop and the calibration worked. If most 
+    fringestop and the calibration worked. If most
     antennas end up with zero phase, then the calibration worked.
 
     Parameters
     ----------
-    vis : np.array
-        Visibility array (nfreq, ncorr)
+    vis : np.ndarray[nfreq, ncorr, ntimes]
+        Visibility array 
     nu  : int
         Frequency index to plot up
     """
@@ -132,6 +126,9 @@ def solve_gain(data, feeds=None):
     return dr, gain
 
 def read_data(reader_obj, src, prod_sel, freq_sel=None, del_t=50):
+    """ Use andata tools to select freq, products, 
+    and times. 
+    """
     R = reader_obj
 
     # Figure out when calibration source transits
@@ -176,17 +173,19 @@ def solve_ps_transit(filename, corrs, feeds, inp,
          Complex gain array (nfreq, nfeed) 
     """
 
+    nsplit = 32 # Number of freq chunks to divide nfreq into
     del_t = 400
 
     f = h5py.File(filename, 'r')
 
-    # Add half an integration time to each. 
+    # Add half an integration time to each. Hack. 
     times = f['index_map']['time'].value['ctime'] + 10.50
     src_trans = eph.transit_times(src, times[0])
     
     # try to account for differential arrival time from 
     # cylinder rotation. 
-    del_phi = (src._dec - np.radians(eph.CHIMELATITUDE)) * np.sin(np.radians(1.988))
+    del_phi = (src._dec - np.radians(eph.CHIMELATITUDE)) \
+                 * np.sin(np.radians(1.988))
     del_phi *= (24 * 3600.0) / (2 * np.pi)
 
     # Adjust the transit time accordingly
@@ -201,11 +200,10 @@ def solve_ps_transit(filename, corrs, feeds, inp,
 
     assert (len(t_range) > 0), "Source is not in this acq"
 
+    # Create gains array to fill in solution
     Gains = np.zeros([nfreq, nfeed], np.complex128)
     
     print "Starting the solver"
-    
-    nsplit = 32
     
     times = times[t_range[0]:t_range[-1]]
     
@@ -265,6 +263,7 @@ def solve_ps_transit(filename, corrs, feeds, inp,
         # Remove offset from galaxy
         vis -= 0.5 * (vis[..., 0] + vis[..., -1])[..., np.newaxis]
    
+        # Get physical freq for fringestopper
         freq_MHZ = 800.0 - np.array(frq) / 1024.0 * 400.
     
         baddies = np.where(np.isnan(tools.get_feed_positions(inp)[:, 0]))[0]

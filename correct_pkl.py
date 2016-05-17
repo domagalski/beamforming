@@ -84,7 +84,7 @@ def phase_mult_remove_original_phase(data_pkl, phase, inp):
      data_pkl[inp][1][0] *= np.exp(-1j * np.angle(data_pkl[inp][1][0]))
 
      # Now remove instrumental phase from carrier pkl 
-     data_pkl[inp][1][0] *= np.exp(-1j * phase)
+     data_pkl[inp][1][0] *= np.exp(+1j * phase)
      data_pkl[inp][1][0] = np.round(data_pkl[inp][1][0].real)\
          + 1j * np.round(data_pkl[inp][1][0].imag)
 
@@ -129,17 +129,6 @@ def apply_pkl_gain(data, gain_pkl, nfeeds=256):
                    *= (gain_pkl[:, ii] * np.conj(gain_pkl[:, jj]))[..., np.newaxis]
 
      return data
-
-def this(infile0, infile1, data, freq=range(1024)):
-     gain_mat0 = gain_pkl_mat(infile0)
-     gain_mat1 = gain_pkl_mat(infile1)
-
-     assert len(freq)==data.shape[0]
-
-     data_rm = remove_gain(data, gain_mat0[freq])      
-     data_ng = apply_pkl_gain(data_rm, gain_mat1[freq])
-
-     return data_ng
 
 
 def construct_gain_mat(gx, gy, nch, nfreq=1024, nfeed=256):
@@ -298,7 +287,7 @@ def fs_and_correct_gains(fn_h5, fn_gain, src, freq=305, \
     
     print "Summed h5 gains: ", Gh5.sum()
 
-    return dfs, Gh5, gain_mat
+    return dfs
 
 """
 def check_gain_solution(infile_pkl, infile_h5, freq=305, transposed=True):
@@ -361,7 +350,18 @@ ch_map = [12, 13, 14, 15, 8, 9, 10, 11, 4, 5, 6, 7, 0, 1, 2, 3]
 #compare_pkl_to_h5(fn, './inp_gains/gains_', trans=False)
     
 
-def do_it_all(Gains, input_pkls):
+def generate_pkl_files(Gains, input_pkls):
+     """ Take a Gains matrix and original 
+     gain .pkl files and update pkl phases. 
+
+     Parameters
+     ----------
+     Gains : np.ndarray[nfreq, nfeed]
+          Complex gain matrix solved for by phase_solver_code
+     input_pkls : string
+          string giving path name of pkls (e.g. './inp_pkls/gain_slot')
+      
+     """
 
      for fpga_name in fpga_list:
           data_pkl = read_pkl(input_pkls + fpga_name + '.pkl')

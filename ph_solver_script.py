@@ -83,7 +83,7 @@ if args.gen_pkls == 1:
     os.system('scp "%s:%s" "%s"' % ("chime@glock", 
            "/home/chime/ch_acq/gains_slot*pkl", "./inp_gains/") )
 
-    correct_pkl.do_it_all(Gains, args.input_pkls)
+    correct_pkl.generate_pkl_files(Gains, args.input_pkls)
 
 #    os.system('scp -r "%s" chime@"%s:%s"' % ("
 #    /home/connor/code/beamforming/beamforming/outp_gains/gains_slot*pkl", 
