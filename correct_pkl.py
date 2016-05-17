@@ -1,3 +1,17 @@
+# Code to take gain solutions and generate
+# .pkl files to be fed to Pathfinder F-engine. 
+# Because CHIME pathfinder has a lower-triangle X-engine
+# and a conjugate-FFT F-engine, the final visibilities
+# end up with the phase you'd expect, however the 
+# intermediate steps can be tricky. 
+#
+# For this reason, note that if phase_solver_code.remove_fpga_gains
+# is used with triu=False, then correct_pkl.phase_mult_remove_original_phase
+# the line "data_pkl[inp][1][0] *= np.exp(+1j * phase)" should 
+# indeed have +1j, and not -1j. This worked between Oct 2015 - May 2016
+#
+
+
 import numpy as np
 import h5py
 import glob
@@ -77,6 +91,14 @@ def write_pkl(fnout, data):
      output.close()
 
 def phase_mult_remove_original_phase(data_pkl, phase, inp):
+     phase[np.isnan(phase)] = 0.0
+
+     # Force the pkl carrier to be purely Real                                                                                                                        
+     data_pkl[inp][1][0] *= np.exp(-1j * np.angle(data_pkl[inp][1][0]))
+
+     # Now remove instrumental phase from carrier pkl                                                                                                                 
+     data_pkl[inp][1][0] *= np.exp(+1j * phase)
+
 
      phase[np.isnan(phase)] = 0.0
 
@@ -88,6 +110,7 @@ def phase_mult_remove_original_phase(data_pkl, phase, inp):
      data_pkl[inp][1][0] = np.round(data_pkl[inp][1][0].real)\
          + 1j * np.round(data_pkl[inp][1][0].imag)
 
+     # Gains cannot be larger than 2**15 - 1
      assert abs(data_pkl[inp][1][0].real).all() < 32767
      assert abs(data_pkl[inp][1][0].imag).all() < 32767
 
