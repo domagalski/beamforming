@@ -26,17 +26,35 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
 def plt_gains(vis, nu, img_name='out.png', bad_chans=[]):
+    """ Plot grid of transit phases to check if both 
+    fringestop and the calibration worked. If most 
+    antennas end up with zero phase, then the calibration worked.
+
+    Parameters
+    ----------
+    vis : np.array
+        Visibility array (nfreq, ncorr)
+    nu  : int
+        Frequency index to plot up
+    """
     fig = plt.figure(figsize=(14, 14))
     
     # Plot up 128 feeds correlated with antenna "ant"
 
     ant = 1
+
+    # Try and estimate the residual phase error 
+    # after calibration. Zero would be a perfect calibration.
     angle_err = 0
 
+    # Go through 128 feeds plotting up their phase during transit
     for i in range(128):
         fig.add_subplot(32, 4, i+1)
 
         if i==ant:
+            # For autocorrelation plot the visibility rather 
+            # than the phase. This gives a sense for when 
+            # the source actually transits. 
             plt.plot(vis[nu, misc.feed_map(ant, i+1, 128)])
             plt.xlim(0, len(vis[nu, 0]))
         else:
