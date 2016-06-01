@@ -560,6 +560,12 @@ def sum_corrs(data, feeds):
 
     return data[:, autos].sum(1) + 2 * data[:, xcorrs].sum(1)
 
+
+def make_outfile_name(fn):
+    fname = fn.split('/')
+    tstring = fname[-2] + fname[-1][:-3]
+
+    return tstring
     
 def fill_nolan(times, ra, dec, feed_positions):
 
