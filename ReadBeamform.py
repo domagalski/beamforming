@@ -314,6 +314,11 @@ class ReadBeamform:
           return dd_coh
 
      def correlate_xy(self, data_pol0, data_pol1, header, indpol0, indpol1):
+          """ Method to correlate x and y beams. Since packets  
+          from two different polarizations arrive at different times,
+          one has to make sure only equivalent sequence number and frequencies 
+          are being multiplied together.
+          """
 
           seq0 = header[indpol0, -1]
           seq1 = header[indpol1, -1]
@@ -343,52 +348,9 @@ class ReadBeamform:
 
                XYreal.append(xyreal)
                XYimag.append(xyimag)
-
-          times = header[indpol0, -3] / np.float(self.nperpacket) 
-          times += header[indpol0, -2].astype(np.float)
-
-          # All May 2
-          tt_xy = np.array(seq_xy) / 625.0**2
 
           return XYreal, XYimag
 
-     def first_correlate_xy(self, data_pol0, data_pol1, header, indpol0, indpol1):
-
-          seq0 = header[indpol0, -1]
-          seq1 = header[indpol1, -1]
-
-          XYreal = []
-          XYimag = []
-          
-          seq_xy = []
-
-          data_rp0 = data_pol0.real
-          data_ip0 = data_pol0.imag
-
-          data_rp1 = data_pol1.real
-          data_ip1 = data_pol1.imag
-
-          for t0, tt in enumerate(seq0):
-
-               t1 = np.where(seq1 == tt)[0]
-
-               if len(t1) < 1:
-                    continue
-
-               seq_xy.append(tt)
-
-               xyreal = data_rp0[t0] * data_rp1[t1] + data_ip0[t0] * data_ip1[t1]
-               xyimag = data_ip0[t0] * data_rp1[t1] - data_rp0[t0] * data_ip1[t1]
-
-               XYreal.append(xyreal)
-               XYimag.append(xyimag)
-
-          times = header[indpol0, -3] / np.float(self.nperpacket) 
-          times += header[indpol0, -2].astype(np.float)
-
-          tt_xy = (seq_xy - seq_xy[0]) / 625.0**2 + times[0]
-
-          return XYreal, XYimag, self.J2000_to_unix(tt_xy)
 
      def correlate_and_fill(self, data, header, trb=1, freq_select=None):
           """ Take header and data arrays and reorganize
@@ -459,7 +421,6 @@ class ReadBeamform:
 
                     XYreal = np.concatenate(XYreal, axis=0).reshape(-1, self.nperpacket, 8)
                     XYimag = np.concatenate(XYimag, axis=0).reshape(-1, self.nperpacket, 8)
-
 
                     arr[:len(indpol0), 0, fin] = data_corr[indpol0]
                     arr[:len(indpol1), 3, fin] = data_corr[indpol1]
