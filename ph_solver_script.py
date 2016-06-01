@@ -28,7 +28,10 @@ args = parser.parse_args()
 name = args.src
 
 # Find datetime string in input .h5 file
-tstring = args.fn[args.fn.index('201') : args.fn.index('201') + 15]
+
+#tstring = args.fn[args.fn.index('201') : args.fn.index('201') + 15]
+
+tstring = psolv.make_outfile_name(args.fn)
 
 outfile = './solutions/' + tstring + name + '.hdf5'
 
@@ -85,7 +88,8 @@ if args.gen_pkls == 1:
 
     correct_pkl.generate_pkl_files(Gains, args.input_pkls)
 
-#    os.system('scp -r "%s" chime@"%s:%s"' % ("
-#    /home/connor/code/beamforming/beamforming/outp_gains/gains_slot*pkl", 
-#    "gamelan", "/home/chime/") )
+    os.system('scp /home/connor/code/beamforming/beamforming/outp_gains/gains_slot*.pkl chime@glock:~/')
+#    os.system('scp -r "%s" chime@"%s:%s"' % ("\
+#    /home/connor/code/beamforming/beamforming/outp_gains/gains_slot*pkl", \
+#    "glock", "/home/chime/") )
 
