@@ -218,11 +218,48 @@ class ReadBeamform:
                data.append(self.str_to_int(data_str[32:])[np.newaxis])
 
           if len(header) >= 1:
+              data = np.concatenate(data).reshape(len(header), -1)
+              header = np.concatenate(header).reshape(-1, 6)
 
-               data = np.concatenate(data).reshape(len(header), -1)
-               header = np.concatenate(header).reshape(-1, 6)
+              return header, data
 
-               return header, data
+     def read_file_header(self, fn):
+          """ Get header and from .dat file
+   
+          Parameters  
+          ----------
+          fn : np.str 
+               file name                                                                 
+
+          Returns
+          -------                                                                                                                                          
+          header : array_like
+               (nt, 6) array, see self.parse_header
+          data : array_like 
+               (nt, ntfr * 2 * nfq)                                  
+          """
+          fo = open(fn)
+
+          header = []
+
+          k=0
+
+          while True:
+               data_str = fo.read(self.frame_size)
+
+               if len(data_str) == 0:
+                    break
+               
+               # Read in first 32 bytes of frame
+               header = self.parse_header(data_str[:32])
+
+               fin = header[2] + 16 * header[1] + 128 * np.arange(8)
+               print fin
+
+          if len(header) >= 1:
+              header = np.concatenate(header).reshape(-1, 6)
+
+              return header, data
 
      def J2000_to_unix(self, t_j2000):
           """ Takes seconds since J2000 and returns 
@@ -545,7 +582,7 @@ class ReadBeamform:
           return arr, tt
 
      def cohdd_test(self, data, header, p0, dm):
-         import ch_pulsar_analysis2 as chp
+         import ch_pulsar_analysis as chp
 
          data = data[:, ::2] + 1.0j * data[:, 1::2]
          data = data.reshape(-1, 625, 8)

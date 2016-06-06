@@ -10,8 +10,8 @@ import h5py
 import glob
 
 import ReadBeamform as rbf
-reload(rbf)
-import ch_pulsar_analysis2 as chp
+
+import ch_pulsar_analysis as chp
 #import ch_util.ephemeris as eph
 import source_dict
 
@@ -26,8 +26,8 @@ accumulate = True
 reamalgamate = True
 reamalgamate_first = False # In case data already folded
 
-timestream_save = True # Don't do anything pulsar related
-dd_timestream = False # Produce dedispersed timestream, among other things
+timestream_save = False # Don't do anything pulsar related
+dd_timestream = True # Produce dedispersed timestream, among other things
 fold_full = False
 coherent_dd = False
 
@@ -40,8 +40,8 @@ nfreq = 1024
 trb = 2000 # Factor to rebin data array by
 f_start = np.int(sys.argv[4])
 nfiles = np.int(sys.argv[5]) # Total number of files to us
-f_step = 15 # step between files
-n_save = 30 # Save down every n_save files
+f_step = 1 # step between files
+n_save = 50 # Save down every n_save files
 
 f_dir = '/drives/G/*/' + sys.argv[1]
 outfile = '/drives/G/0/liamfolded/proc_data/' + sys.argv[2]
@@ -49,9 +49,18 @@ outfile = '/drives/G/0/liamfolded/proc_data/' + sys.argv[2]
 ngate = 64
 psr = sys.argv[3]
 
-p0, dm, ra = source_dict.src_dict[psr]
+if psr is not None:
+     p0, dm, ra = source_dict.src_dict[psr]
+     
+     print "Using period %f and DM %f \n" % (p0, dm)
 
-print "Using period %f and DM %f" % (p0, dm)
+dm = 433.23
+
+print "Accumulate : %r" % accumulate 
+print "Reamalgamate : %r" % reamalgamate
+print "Reamalg first : %r" % reamalgamate_first
+print "Fold full : %r" % fold_full
+print "Save every : %d files" % n_save
 
 flist = glob.glob(f_dir + '/*dat')
 flist.sort()
@@ -95,14 +104,6 @@ def amalgamate(outfile, taxis=-2):
           Arr.append(arr)
 
      Arr = np.concatenate(Arr, axis=taxis)
-     
-     fig = plt.figure(figsize=(10,10))
-     plt.plot(Arr[:, 0, 913])
-     plt.plot(Arr[:, 0, 307])
-     plt.plot(Arr[:, 0, 300])
-     plt.plot(Arr[:, 0, 500])
-     plt.savefig('heremo.png')
-     #Arr = Arr[:len(Arr)//100*100].reshape(-1, 10, 4, 1024).mean(1)
 
      print "Writing to %s" % (outfile + 'full.hdf5')
 
@@ -120,7 +121,6 @@ if reamalgamate_first:
           taxis=-2
 
      Arr = amalgamate(outfile, taxis=taxis)
-     Arr = Arr[:len(Arr)//10*10].reshape(-1, 10, 4, 1024).mean(1)
 
      if (plot_spec is True):
           #if fold_full is True:
@@ -159,7 +159,7 @@ for ii in range(f_start, f_start + nfiles, f_step):
 
      header, data = read_arrs
 
-     print "Unix time: %f" % RB.get_times(header)[1][0]
+     print "Unix time: %f %f" % (RB.get_times(header)[1][0], header[0, -1] * 2.56e-6)
 
      if make_highres_plot is True:# and k==1:
           print "Making high res plot"
@@ -172,12 +172,8 @@ for ii in range(f_start, f_start + nfiles, f_step):
 #          arr_highres = np.abs(arr_highres.reshape(-1, 25, npol, nfreq))**2
 
           arr_highres = arr_highres.sum(1)
-#          arr_highres = arr_highres.reshape(-1, 4, 512, 2).mean(-1)#          arr_highres1d = r
           np.save('dd' + np.str(k), arr_highres)
-#          rbf.plot_waterfall(arr_highres.sum(1), outfile + np.str(k) + '.png')
           continue
-#          rbf.plot_1d(arr_highres1d, outfile + '1d.png')
-
 
      times_o = RB.get_times(header, False)
 
@@ -239,8 +235,6 @@ for ii in range(f_start, f_start + nfiles, f_step):
                arr = np.concatenate(arr)
                times = np.concatenate(tt_tot)
 
-               np.save('arr', arr)
-               np.save('times', times)
           if timestream_save is True:
                write_h5(outfile + np.str(ii) + '.hdf5', arr, times)
 
@@ -269,25 +263,20 @@ for ii in range(f_start, f_start + nfiles, f_step):
                # Instance class with full array, but a dummy time vector
                PulsarPipeline = chp.PulsarPipeline(arr.transpose(), times[:, 0, 0])
 
-               print "dis the hist"
-               print np.histogram(times[:, 0].flatten(), bins=3)
-               print np.histogram(times[:, 1].flatten(), bins=3)
-               print np.histogram(times[:, 2].flatten(), bins=3)
-               print np.histogram(times[:, 3].flatten(), bins=3)
+               print dm, np.diff(times[:, 0, 0])[:10]
 
                dedis_timestream, ddtimes = PulsarPipeline.\
                          dedispersed_timestream(dm, times.transpose(), 
                                 onm=outfile + np.str(ii) + '.png')
 
-               np.save('dd', dedis_timestream)
-               np.save('ddt', ddtimes)
-
                dedis_timestream -= np.mean(dedis_timestream, axis=-1, keepdims=True)
 
                dddis_full.append(dedis_timestream)
-               print dedis_timestream.shape
+
 #               chp.plot_ddtimestream(dedis_timestream, ddtimes, './CRIMSON.png')
-               chp.plot_spectra(dedis_timestream, outfile + np.str(ii) + '.png', dd_timestream=True)
+#               chp.plot_spectra(dedis_timestream, outfile + np.str(ii) + '.png', dd_timestream=True)
+
+#               chp.plot_spectra(dedis_timestream, 'firenacht.png', dd_timestream=True)
               
                write_h5(outfile + '_ddts_' + np.str(ii) + '.hdf5', dedis_timestream, ddtimes)
 
@@ -306,7 +295,7 @@ if reamalgamate is True and (fold_full is True or timestream_save is True):
      if timestream_save is True:
           Arr = amalgamate(outfile, taxis=0)
      else:
-          Arr = amalgamate(outfile, taxis=0)
+          Arr = amalgamate(outfile, taxis=-2)
 
      if (plot_spec is True):
           if fold_full is True:
