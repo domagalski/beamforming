@@ -1,3 +1,13 @@
+# Script to RFI-clean, fringestop, then solve 
+# gains off of a point-source transit. 
+#
+# Example usage:
+# python ph_solver_script.py /mnt/gong/archive/20160604T115702Z_pathfinder_corr/00154100_0000.h5 CygA -solve_gains 1 -gen_pkls 1
+# which would isolate the Cygnus A transit in file 00154100_0000.h5
+# and fringestop, solve for gains, write those gains to an hdf5
+# file, and then generate corresponding *pkl files
+
+
 import os
 
 import numpy as np
@@ -11,7 +21,7 @@ from ch_util import tools
 import ch_util.ephemeris as eph
 import misc_data_io as misc
 
-parser = argparse.ArgumentParser(description="This script RFI-cleans, fringestops, and folds the pulsar data.")
+parser = argparse.ArgumentParser(description="This script RFI-cleans, fringestops, solve gains")
 
 parser.add_argument("fn", help="datafile")
 parser.add_argument("src", help="Name of src to calibrate off")
