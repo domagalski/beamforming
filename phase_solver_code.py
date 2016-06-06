@@ -398,6 +398,7 @@ def fs_from_file(filename, frq, src,
     baddies = np.where(np.isnan(tools.get_feed_positions(inp)[:, 0]))[0]
 
     # Fringestop to location of "src"
+
     data_fs = tools.fringestop_pathfinder(vis, eph.transit_RA(times), freq_MHZ, inp, src)
 #    data_fs = fringestop_pathfinder(vis, eph.transit_RA(times), freq_MHZ, inp, src)
 

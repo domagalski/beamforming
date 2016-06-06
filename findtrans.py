@@ -18,8 +18,11 @@ def reorder_dir(basedir):
     dirlist = []
     dirtimes = []
 
-    basedir_list = os.listdir(basedir)
-
+    try:
+        basedir_list = os.listdir(basedir)
+    except OSError:
+        print "A literal OSError"
+        
     if basedir_list is None:
         print "%s is empty" % basedir
         return 
@@ -36,7 +39,7 @@ def reorder_dir(basedir):
     
 
 def find_trans(fdir, src_search):
-    """ Search fdir for a given source (src_search), 
+    """ Search fdir for a given source "src_search", 
     return the most recent transit file.
     """
     flist = glob.glob(fdir + '/*h5')
@@ -53,7 +56,7 @@ def find_trans(fdir, src_search):
         if src_search in src_list:
             trans_file = file
 
-    print "Transit in %s" % trans_file
+            print "Transit in %s" % trans_file
     return trans_file
 
 
@@ -91,6 +94,7 @@ def main():
             os.system('python ph_solver_script.py %s %s -solve_gains 1 -gen_pkls 1' \
                           % (trans_file, src_search))
             print "Going to sleep for a whole damn day"
+            print strftime("%Y-%m-%d %H:%M:%S", time.gmtime())
             time.sleep(12 * 3600)
 
 
