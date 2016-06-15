@@ -27,6 +27,7 @@ class ReadBeamform:
           self.nfreq = 1024 # Total number of freq
           self.nperpacket = 625 # Time samples per packet
           self.frame_size = 5032 # Frame size in bytes
+          self.frame_size_ARO = 1056
           self.freq = np.linspace(800, 400, 1024) * 1e6 # Frequency array in Hz
           self.dt = 1. / (800e6) # Sample rate pre-channelization
           self.dispersion_delay_constant = 4149. # u.s * u.MHz**2 * u.cm**3 / u.pc
@@ -50,6 +51,24 @@ class ReadBeamform:
                          }
 
           return header_dict
+
+     @property
+     def header_dict_ARO(self):
+          """ Dictionary with header info. Each entry has a
+          length-three list ordered [word_number, bit_min, bit_max]. 
+          i.e. the 8b word number in the 32-byte VDIF header followed 
+          by the bit range within the word.
+          """
+          header_dict = {'time'    : [0, 0, 29],
+                         'epoch'   : [1, 24, 29],
+                         'frame'   : [1, 0, 23],
+                         'threadID': [3, 16, 25],
+                         'logNchan': [2, 26, 30],
+                         'bitpsamp': [3, 26, 30]
+                         }
+
+          return header_dict
+     
 
      def bit_manip(self, x, k, l):
           """ Select only bits k from the right to
@@ -95,6 +114,42 @@ class ReadBeamform:
           count = self.bit_manip(head_int[eud2_ind[0]], eud2_ind[1], eud2_ind[2])
 
           return station, link, slot, frame, time, count
+
+     def parse_header_ARO(self, header):
+          """ Take header binary parse it 
+
+          Returns
+          -------
+          station : int 
+               polarization state (0 or 1)
+          link : int
+               freq index, increases packet to packet 
+          slot : int
+               node number 
+          frame : int
+               frame index
+          time : int 
+               time after reference epoch in seconds
+          count : int
+               fpga count               
+          """
+          # Should be 8 words long
+          head_int = np.fromstring(header, dtype=np.uint32) 
+
+          hdict = self.header_dict_ARO
+
+          t_ind = hdict['time']
+          frame_ind = hdict['frame']
+          thread_ind = hdict['threadID']
+#          link_ind = hdict['link']
+#          slot_ind = hdict['slot']
+#          eud2_ind = hdict['eud2']
+
+          time_sec = self.bit_manip(head_int[t_ind[0]], t_ind[1], t_ind[2])
+          frame = self.bit_manip(head_int[frame_ind[0]], frame_ind[1], frame_ind[2])
+          pol = self.bit_manip(head_int[thread_ind[0]], thread_ind[1], thread_ind[2])
+
+          return time_sec, frame, pol
 
      def open_pcap(self, fn):
           """ Reads in pcap file with dpkt package
@@ -184,7 +239,7 @@ class ReadBeamform:
 
                return header, data
 
-     def read_file_dat(self, fn):
+     def read_file_dat(self, fn, telescope='DRAO'):
           """ Get header and data from .dat file
    
           Parameters  
@@ -207,19 +262,41 @@ class ReadBeamform:
           k=0
 
           while True:
-               data_str = fo.read(self.frame_size)
+               if telescope is 'DRAO':
+                   data_str = fo.read(self.frame_size)
 
-               if len(data_str) == 0:
-                    break
+                   if len(data_str) == 0:
+                       break
                
-               # Read in first 32 bytes of frame
-               header.append(self.parse_header(data_str[:32]))
-               # Read in final 5000 bytes of frame 
-               data.append(self.str_to_int(data_str[32:])[np.newaxis])
+                   # Read in first 32 bytes of frame
+                   header.append(self.parse_header(data_str[:32]))
+                   # Read in final 5000 bytes of frame 
+                   data.append(self.str_to_int(data_str[32:])[np.newaxis])
+
+               elif telescope is 'ARO':
+                   data_str = fo.read(self.frame_size_ARO)
+                   
+                   if len(data_str) == 0:
+                       break
+
+                   header.append(self.parse_header_ARO(data_str[:32]))
+                   data.append(self.str_to_int(data_str[32:])[np.newaxis])
+               else:
+                   raise NameError("Need to choose a real telescope")
+               
 
           if len(header) >= 1:
               data = np.concatenate(data).reshape(len(header), -1)
-              header = np.concatenate(header).reshape(-1, 6)
+              
+              # Number of header elements for telescopes is different
+              if telescope is 'DRAO':
+                  tel_params = 6
+              elif telescope is 'ARO':
+                  tel_params = 3
+              else:
+                  raise NameError("Need to choose a real telescope")
+              
+              header = np.concatenate(header).reshape(-1, tel_params)
 
               return header, data
 
@@ -308,6 +385,14 @@ class ReadBeamform:
                times = seq / 625.0**2
 
                return times, self.J2000_to_unix(times - times[0] + times_cpu[0])
+
+
+     def get_times_ARO(self, header):
+         """ Takes two time columns of header (seconds since                                  
+          J2000 and packet number) and frame number
+          to returns a time vector. 
+         """
+         return header[0] + header[1] / np.float(self.nperpacket)**2
 
 
      def first_get_times(self, header, seq=True):
