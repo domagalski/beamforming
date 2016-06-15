@@ -4,7 +4,9 @@ import sys
 import time
 import numpy as np
 import glob
+import datetime
 
+import ch_util.ephemeris as eph
 import print_timestamp as pt
 from phase_solver_code import make_outfile_name
 
@@ -44,11 +46,12 @@ def find_trans(fdir, src_search):
     """
     flist = glob.glob(fdir + '/*h5')
     flist.sort()
-    print flist
+
     for file in flist:
         print "\nFile: %s \n" % file
         src_list = pt.print_timestamp(file)
-        
+
+        print src_list
         if src_list is None:
             print "%s is NoneType" % file
             continue 
@@ -57,7 +60,8 @@ def find_trans(fdir, src_search):
             trans_file = file
 
             print "Transit in %s" % trans_file
-    return trans_file
+
+            return trans_file
 
 
 def main():
@@ -71,11 +75,16 @@ def main():
   
             src_search = sys.argv[1]
             
+            # Search the most recent directory for the source "src_search"
             trans_file = find_trans(basedir + dir_recent, src_search)
-            #tstring = trans_file[trans_file.index('201'):trans_file.index('201') + 15]
-            
+
+            if trans_file is None:
+                print "Trans file doesn't exist in this directory, sleeping for 1hr"
+                time.sleep(3600)
+                continue
+
             tstring = make_outfile_name(trans_file)
-            print trans_file, tstring
+
             outfile = './solutions/' + tstring + src_search + '.hdf5'
             
             # might be useful to just make sure gains are swapped
@@ -94,9 +103,9 @@ def main():
             os.system('python ph_solver_script.py %s %s -solve_gains 1 -gen_pkls 1' \
                           % (trans_file, src_search))
             print "Going to sleep for a whole damn day"
-            print strftime("%Y-%m-%d %H:%M:%S", time.gmtime())
+            print eph.unix_to_datetime(time.time() - 8 * 3600)
+#            print datetime.datetime.strftime("%Y-%m-%d %H:%M:%S", time.gmtime())
             time.sleep(12 * 3600)
-
 
 
 if __name__=='__main__':

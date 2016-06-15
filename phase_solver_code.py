@@ -563,8 +563,13 @@ def sum_corrs(data, feeds):
 
 
 def make_outfile_name(fn):
-    fname = fn.split('/')
-    tstring = fname[-2] + fname[-1][:-3]
+
+    try:
+        fname = fn.split('/')
+        tstring = fname[-2] + fname[-1][:-3]
+    except AttributeError:
+        print "fn is None"
+        return 
 
     return tstring
     
