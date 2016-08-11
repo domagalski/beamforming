@@ -169,7 +169,10 @@ class ReadBeamform:
           Returns
           -------
           data : array_like
-               np.float32 arr [Re, Im, Re, Im, ...]
+               np          raw = np.fromstring(raw, dtype=np.uint8)
+
+          raw_re = (((raw >> 4) & 0xf).astype(np.int8) - 8).astype(np.float32)
+          raw_im = ((raw & 0xf).astype(np.int8) - 8).astype(np.float32).float32 arr [Re, Im, Re, Im, ...]
           """
           raw = np.fromstring(raw, dtype=np.uint8)
 
@@ -181,6 +184,29 @@ class ReadBeamform:
           data[1::2] = raw_im
 
           return data
+
+     def str_to_int_incoherent(self, raw):
+          """ Read in data from incoherent vdif 
+          packets as signed 8b ints
+
+          Parameters
+          ----------
+          raw : binary
+               Binary data to be read in 
+
+          Returns
+          -------
+          data : array_like
+               np.float32 arr [Re, Im, Re, Im, ...]
+          """
+          raw = (np.fromstring(raw, dtype=np.uint8)).astype(np.float32)
+          
+          data = np.zeros([2*len(raw)], dtype=np.float32)
+          data[0::2] = raw
+
+          return data
+
+
 
      def freq_ind(self, slot_id, link_id, frame):
           """ Get freq index (0-1024) from slot number,
@@ -239,7 +265,7 @@ class ReadBeamform:
 
                return header, data
 
-     def read_file_dat(self, fn, telescope='DRAO'):
+     def read_file_dat(self, fn, telescope='DRAO', voltage_beam=True):
           """ Get header and data from .dat file
    
           Parameters  
@@ -268,10 +294,14 @@ class ReadBeamform:
                    if len(data_str) == 0:
                        break
                
-                   # Read in first 32 bytes of frame
-                   header.append(self.parse_header(data_str[:32]))
-                   # Read in final 5000 bytes of frame 
-                   data.append(self.str_to_int(data_str[32:])[np.newaxis])
+                   if voltage_beam is True:
+                       # Read in first 32 bytes of frame
+                       header.append(self.parse_header(data_str[:32]))
+                       # Read in final 5000 bytes of frame 
+                       data.append(self.str_to_int(data_str[32:])[np.newaxis])
+                   else:
+                       header.append(self.parse_header(data_str[:32]))
+                       data.append(self.str_to_int_incoherent(data_str[32:])[np.newaxis])
 
                elif telescope is 'ARO':
                    data_str = fo.read(self.frame_size_ARO)
