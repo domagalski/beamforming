@@ -52,7 +52,7 @@ psr = sys.argv[3]
 
 if psr is not None:
      p0, dm, ra = source_dict.src_dict[psr]
-     
+
      print "Using period %f and DM %f \n" % (p0, dm)
 
 print "Accumulate : %r" % accumulate 
@@ -153,7 +153,7 @@ for ii in range(f_start, f_start + nfiles, f_step):
           print "Index issue"
           continue
           
-     read_arrs = RB.read_file_dat(fname)
+     read_arrs = RB.read_file_dat(fname, voltage_beam=voltage_beam)
 
      if read_arrs == None:
           print "exiting"
@@ -206,7 +206,7 @@ for ii in range(f_start, f_start + nfiles, f_step):
                                 header_acc)
                     elif voltage_beam is False:
                          v, tt = RB.correlate_and_fill_incoherent(data_acc,
-                                header_acc)
+                                 header_acc)
 
                     arr.append(v)
                     tt_tot.append(tt)

@@ -763,11 +763,87 @@ class ReadBeamform:
                     
                     if (len(indpol0) >= 1) and (len(indpol0) < arr.shape[0]): 
                          tt[:len(indpol0), 0, fin] = self.get_times(\
-                                header[indpol0]).repeat(8).reshape(-1, 8)
+                                header[indpol0])[0].repeat(8).reshape(-1, 8)
 
                     if (len(indpol1) >= 1) and (len(indpol1) < arr.shape[0]):
                          tt[:len(indpol1), 3, fin] = self.get_times(\
-                                header[indpol1]).repeat(8).reshape(-1, 8)
+                                header[indpol1])[0].repeat(8).reshape(-1, 8)
+                    
+          
+          maxt = np.array(tlen).max()
+          arr = arr[:maxt]
+          tt = tt[:maxt]
+
+          return arr, tt
+
+     def first_correlate_and_fill_incoherent(self, data, header, trb=1, freq_select=None):
+          """ Take header and data arrays and reorganize
+          to produce the full time, pol, freq array
+
+          Parameters
+          ----------
+          data : array_like
+               (nt, ntfr * 2 * self.nfq) array of nt packets
+          header : array_like
+               (nt, 5) array, see self.parse_header
+          ntimes : np.int
+               Number of packets to use
+
+          Returns 
+          -------
+          arr : array_like (duhh) np.float64
+               (ntimes * ntfr, npol, nfreq) array of autocorrelations
+          tt : array_like 
+               Same shape as arr, since each frequency has its own time vector
+          """
+
+          slots = set(header[:, 2])
+
+          print "Data has", len(slots), "slots: ", slots
+
+          data = data[:, ::2] 
+
+          data_corr = data.reshape(-1, self.nperpacket, 8).mean(1)
+
+          arr = np.zeros([data_corr.shape[0] / self.nfr / 2 / len(slots) + 256
+                                   , 2*self.npol, self.nfreq], np.float64)
+
+          tt = np.zeros([data_corr.shape[0] / self.nfr / 2 / len(slots) + 256
+                                   , 2*self.npol, self.nfreq], np.float64)
+
+          tlen = []
+          for qq in xrange(self.nfr):
+               for ii in slots:
+
+                    fin = ii + 16 * qq + 128 * np.arange(8)
+                    
+                    indpol0 = np.where((header[:, 0]==0) & \
+                          (header[:, 1]==qq) & (header[:, 2]==ii))[0]
+
+                    indpol1 = np.where((header[:, 0]==1) & \
+                          (header[:, 1]==qq) & (header[:, 2]==ii))[0]
+                    
+                    inl = min(len(indpol0), len(indpol1))
+
+                    maxlen = max(len(indpol0), len(indpol1))
+                    tlen.append(maxlen)
+
+                    if inl < 1:
+                         continue
+
+                    indpol0 = indpol0[:inl]
+                    indpol1 = indpol1[:inl]
+                    
+                    arr[:len(indpol0), 0, fin] = data_corr[indpol0]
+                    arr[:len(indpol1), 3, fin] = data_corr[indpol1]
+                                        
+                    if (len(indpol0) >= 1) and (len(indpol0) < arr.shape[0]): 
+                         tt[:len(indpol0), 0, fin] = self.get_times(\
+                                header[indpol0])[0].repeat(8).reshape(-1, 8)
+
+                    if (len(indpol1) >= 1) and (len(indpol1) < arr.shape[0]):
+                         tt[:len(indpol1), 3, fin] = self.get_times(\
+                                header[indpol1])[0].repeat(8).reshape(-1, 8)
                     
           
           maxt = np.array(tlen).max()
@@ -885,6 +961,80 @@ class ReadBeamform:
 
          if rbtime != 1:
              Arr = np.abs(Arr)**2
+
+             Arrt = Arr[:len(Arr)//rbtime*rbtime].reshape(-1, rbtime, 2, self.nfreq)
+             nnonz = np.where(Arrt!=0, 1, 0)[0].sum(1)
+
+             print Arrt.shape, nnonz.shape
+             Arrt /= nnonz[:, None]
+             Arr[np.isnan(Arr)] = 0.0
+             
+             return Arr
+         else:
+             return Arr
+
+
+     def reorg_array_incoherent(self, header, data, rbtime=1):
+         """ Reorganizes intensities 
+         from an incoherent capture and returns contiguous array
+
+         Parameters
+         ---------- 
+         header : 
+             (50000, 6) arr containing header information
+         data   : 
+             (50000, 10000) data array 
+         rbtime : int
+             if greater than 1, reshapes after squaring voltages
+
+         Returns
+         -------
+         Organized array of voltages (if rbtime==1), autocorrs 
+         if (rbtime > 1)
+         """
+
+         # Makes sure rbtimes is an integer greater than 1
+         assert rbtime >= 1
+         assert rbtime % 1 == 0
+
+         # Make complex array of voltages
+         data_c = data[:, ::2] 
+
+         del data
+
+         data_c = data_c.reshape(-1, 625, 8)
+
+         seq_list = list(set(header[:, -1]))
+         seq_list.sort()
+         seq_list_zero = seq_list - seq_list[0]
+
+         # Get total number of packets between first and last
+         npackets = (seq_list[-1] - seq_list[0] + self.nperpacket) 
+
+         seq_f = np.arange(seq_list[0], seq_list[-1])
+#         Arr = np.zeros([625*len(seq_list), self.npol, self.nfreq], np.complex64)
+         Arr = np.zeros([npackets, self.npol, self.nfreq], np.float32)
+
+         for pp in xrange(self.npol):
+             for qq in xrange(self.nfr):
+                 for ii in xrange(16):
+                     for ss in xrange(len(seq_list)):
+                            seq=seq_list[ss] 
+                            ind = np.where((header[:, 0]==pp) & (header[:, 1]==qq) & \
+                                           (header[:, 2]==ii) & (header[:, -1]==seq))[0]
+                              
+                            fin = ii + 16 * qq + 128 * np.arange(8)
+
+                            if len(ind) != 1:
+                                continue
+
+                            tti = seq_list_zero[ss]
+
+                            Arr[tti:tti+625, pp, fin] = data_c[ind[0]]
+
+         del data_c, header
+
+         if rbtime != 1:
 
              Arrt = Arr[:len(Arr)//rbtime*rbtime].reshape(-1, rbtime, 2, self.nfreq)
              nnonz = np.where(Arrt!=0, 1, 0)[0].sum(1)
