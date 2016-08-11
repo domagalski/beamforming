@@ -498,10 +498,10 @@ class ReadBeamform:
           slots = set(header[:, 2])
 
           print "Data has", len(slots), "slots: ", slots
-          print data.shape
-          data = data[:, ::2] + 1j * data[:, 1::2]
 
+          data = data[:, ::2] + 1j * data[:, 1::2]
           data_corr = data.real**2 + data.imag**2
+          
           data_corr = data_corr.reshape(-1, self.nperpacket, 8).mean(1)
 
           data_real = data.real.reshape(-1, self.nperpacket, 8).transpose((0, 2, 1))
@@ -554,6 +554,86 @@ class ReadBeamform:
 
                     tt[:len(tt_xy0), 1, fin] = tt_xy0
                     tt[:len(tt_xy0), 2, fin] = tt[:len(tt_xy0), 1, fin].copy()
+
+                    # May 2 edit
+                    if (len(indpol0) >= 1) and (len(indpol0) < arr.shape[0]): 
+                         tt[:len(indpol0), 0, fin] = self.get_times(\
+                                         header[indpol0])[0].repeat(8).reshape(-1, 8)
+
+
+                    if (len(indpol1) >= 1) and (len(indpol1) < arr.shape[0]):
+                         tt[:len(indpol1), 3, fin] = self.get_times(\
+                                         header[indpol1])[0].repeat(8).reshape(-1, 8)
+          
+          maxt = np.array(tlen).max()
+          arr = arr[:maxt]
+          tt = tt[:maxt]
+
+          return arr, tt
+
+     def correlate_and_fill_incoherent(self, data, header, trb=1, freq_select=None):
+          """ Take header and data arrays and reorganize
+          to produce the full time, pol, freq array
+
+          Parameters
+          ----------
+          data : array_like
+               (nt, ntfr * 2 * self.nfq) array of nt packets
+          header : array_like
+               (nt, 5) array, see self.parse_header
+          ntimes : np.int
+               Number of packets to use
+
+          Returns 
+          -------
+          arr : array_like (duhh) np.float64
+               (ntimes * ntfr, npol, nfreq) array of autocorrelations
+          tt : array_like 
+               Same shape as arr, since each frequency has its own time vector
+          """
+
+          slots = set(header[:, 2])
+
+          print "Data has", len(slots), "slots: ", slots
+
+          print "Assuming intensities"
+          
+          data_corr = data[:, ::2]
+          data_corr = data_corr.reshape(-1, self.nperpacket, 8).mean(1)
+
+          arr = np.zeros([data_corr.shape[0] / self.nfr / 2 / len(slots) + 256
+                                   , 2*self.npol, self.nfreq], np.float64)
+
+          # May 2 change float32 from 64
+          tt = np.zeros([data_corr.shape[0] / self.nfr / 2 / len(slots) + 256
+                                   , 2*self.npol, self.nfreq], np.float32)
+
+          tlen = []
+          for qq in xrange(self.nfr):
+
+               for ii in slots:
+
+                    fin = ii + 16 * qq + 128 * np.arange(8)
+                    
+                    indpol0 = np.where((header[:, 0]==0) & \
+                                            (header[:, 1]==qq) & (header[:, 2]==ii))[0]
+
+                    indpol1 = np.where((header[:, 0]==1) & \
+                                            (header[:, 1]==qq) & (header[:, 2]==ii))[0]
+                    
+                    inl = min(len(indpol0), len(indpol1))
+
+                    tlen.append(max(len(indpol0), len(indpol1)))
+
+                    if inl < 1:
+                         continue
+
+                    indpol0 = indpol0[:inl]
+                    indpol1 = indpol1[:inl]
+                    
+                    arr[:len(indpol0), 0, fin] = data_corr[indpol0]
+                    arr[:len(indpol1), 3, fin] = data_corr[indpol1]
+                    
 
                     # May 2 edit
                     if (len(indpol0) >= 1) and (len(indpol0) < arr.shape[0]): 

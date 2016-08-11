@@ -27,9 +27,10 @@ reamalgamate = True
 reamalgamate_first = False # In case data already folded
 
 timestream_save = False # Don't do anything pulsar related
-dd_timestream = True # Produce dedispersed timestream, among other things
-fold_full = False
+dd_timestream = False # Produce dedispersed timestream, among other things
+fold_full = True
 coherent_dd = False
+voltage_beam = False
 
 make_highres_plot = False
 
@@ -43,8 +44,8 @@ nfiles = np.int(sys.argv[5]) # Total number of files to us
 f_step = 1 # step between files
 n_save = 50 # Save down every n_save files
 
-f_dir = '/drives/G/*/' + sys.argv[1]
-outfile = '/drives/G/0/liamfolded/proc_data/' + sys.argv[2]
+f_dir = '/drives/H/*/' + sys.argv[1]
+outfile = '/drives/H/0/liamfolded/proc_data/' + sys.argv[2]
 
 ngate = 64
 psr = sys.argv[3]
@@ -53,8 +54,6 @@ if psr is not None:
      p0, dm, ra = source_dict.src_dict[psr]
      
      print "Using period %f and DM %f \n" % (p0, dm)
-
-dm = 433.23
 
 print "Accumulate : %r" % accumulate 
 print "Reamalgamate : %r" % reamalgamate
@@ -139,7 +138,10 @@ for ii in range(f_start, f_start + nfiles, f_step):
      fnumber = "%07d" % (ii, )
      fname = f_dir + fnumber + '.dat'
 
-     fname = glob.glob(fname)[0]
+     try:
+          fname = glob.glob(fname)[0]
+     except IndexError:
+          print glob.glob(f_dir + '*')[0]
 
      if os.path.isfile(fname) is False:
           continue
@@ -159,7 +161,7 @@ for ii in range(f_start, f_start + nfiles, f_step):
 
      header, data = read_arrs
 
-     print "Unix time: %f %f" % (RB.get_times(header)[1][0], header[0, -1] * 2.56e-6)
+     print "Unix time: %f %f" % (RB.get_times(header)[1][0], 0)
 
      if make_highres_plot is True:# and k==1:
           print "Making high res plot"
@@ -199,8 +201,13 @@ for ii in range(f_start, f_start + nfiles, f_step):
                     icount_coh.append(count)
                     
                else:
-                    v, tt = RB.correlate_and_fill(data_acc, 
+                    if voltage_beam is True:
+                         v, tt = RB.correlate_and_fill(data_acc, 
                                 header_acc)
+                    elif voltage_beam is False:
+                         v, tt = RB.correlate_and_fill_incoherent(data_acc,
+                                header_acc)
+
                     arr.append(v)
                     tt_tot.append(tt)
 
@@ -297,7 +304,7 @@ if reamalgamate is True and (fold_full is True or timestream_save is True):
      else:
           Arr = amalgamate(outfile, taxis=-2)
 
-     if (plot_spec is True):
+     if plot_spec is True:
           if fold_full is True:
                arrI = Arr[:, 0] + Arr[:, -1] 
                chp.plot_spectra(arrI, outfile + '.png', dd_timestream=False)
