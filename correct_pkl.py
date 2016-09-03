@@ -93,7 +93,6 @@ def write_pkl(fnout, data):
 def phase_mult_remove_original_phase(data_pkl, phase, inp):
      phase[np.isnan(phase)] = 0.0
 
-
      # Force the carrier pkl to be purely real
      data_pkl[inp][1][0] *= np.exp(-1j * np.angle(data_pkl[inp][1][0]))
 

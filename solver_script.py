@@ -42,7 +42,7 @@ name = args.src
 
 tstring = psolv.make_outfile_name(args.fn)
 
-outfile = './solutions/' + tstring + name + 'toonie.hdf5'
+outfile = './solutions/' + tstring + name + '.hdf5'
 
 g = h5py.File(outfile, 'a')
 
