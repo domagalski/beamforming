@@ -89,7 +89,7 @@ def main():
             outfile = './solutions/' + tstring + src_search + '2.hdf5'
             
             # might be useful to just make sure gains are swapped
-#            os.system('python ph_solver_script.py %s %s -solve_gains 0 -gen_pkls 1' \
+#            os.system('python solver_script.py %s %s -solve_gains 0 -gen_pkls 1' \
 #                          % (trans_file, src_search))
 
             if os.path.exists(outfile):
@@ -101,7 +101,7 @@ def main():
 
             snm = time.time()
 
-            os.system('python ph_solver_script.py %s %s -solve_gains 1 -gen_pkls 1' \
+            os.system('python solver_script.py %s %s -solve_gains 1 -gen_pkls 1' \
                           % (trans_file, src_search))
             print "Going to sleep for a whole damn day"
             print eph.unix_to_datetime(time.time() - 8 * 3600)
