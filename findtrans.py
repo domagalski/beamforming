@@ -47,7 +47,7 @@ def find_trans(fdir, src_search):
     flist = glob.glob(fdir + '/*h5')
     flist.sort()
 
-    for file in flist:
+    for file in flist[::-1]:
         print "\nFile: %s \n" % file
         src_list = pt.print_timestamp(file)
 
@@ -74,7 +74,8 @@ def main():
             dir_recent = reorder_dir(basedir)[0]
   
             src_search = sys.argv[1]
-            
+            print dir_recent
+
             # Search the most recent directory for the source "src_search"
             trans_file = find_trans(basedir + dir_recent, src_search)
 
@@ -85,7 +86,7 @@ def main():
 
             tstring = make_outfile_name(trans_file)
 
-            outfile = './solutions/' + tstring + src_search + '.hdf5'
+            outfile = './solutions/' + tstring + src_search + '2.hdf5'
             
             # might be useful to just make sure gains are swapped
 #            os.system('python ph_solver_script.py %s %s -solve_gains 0 -gen_pkls 1' \
@@ -99,12 +100,12 @@ def main():
             print "feed this", trans_file
 
             snm = time.time()
-            np.savetxt(np.str(snm) + '.txt', [])
+
             os.system('python ph_solver_script.py %s %s -solve_gains 1 -gen_pkls 1' \
                           % (trans_file, src_search))
             print "Going to sleep for a whole damn day"
             print eph.unix_to_datetime(time.time() - 8 * 3600)
-#            print datetime.datetime.strftime("%Y-%m-%d %H:%M:%S", time.gmtime())
+
             time.sleep(12 * 3600)
 
 

@@ -7,7 +7,6 @@
 # and fringestop, solve for gains, write those gains to an hdf5
 # file, and then generate corresponding *pkl files
 
-
 import os
 
 import numpy as np
@@ -43,7 +42,7 @@ name = args.src
 
 tstring = psolv.make_outfile_name(args.fn)
 
-outfile = './solutions/' + tstring + name + '.hdf5'
+outfile = './solutions/' + tstring + name + 'toonie.hdf5'
 
 g = h5py.File(outfile, 'a')
 

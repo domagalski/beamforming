@@ -34,7 +34,6 @@ def plt_gains(vis, nu, img_name='out.png', bad_chans=[]):
     fig = plt.figure(figsize=(14, 14))
     
     # Plot up 128 feeds correlated with antenna "ant"
-
     ant = 1
 
     # Try and estimate the residual phase error 
@@ -42,26 +41,26 @@ def plt_gains(vis, nu, img_name='out.png', bad_chans=[]):
     angle_err = 0
 
     # Go through 128 feeds plotting up their phase during transit
-    for i in range(128):
-        fig.add_subplot(32, 4, i+1)
-
+    for i in range(32):
+        fig.add_subplot(16, 2, i+1)
+        antj = 4 * i + 1
         if i==ant:
             # For autocorrelation plot the visibility rather 
             # than the phase. This gives a sense for when 
             # the source actually transits. 
-            plt.plot(vis[nu, misc.feed_map(ant, i+1, 128)])
+            plt.plot(vis[nu, misc.feed_map(ant, antj+1, 128)])
             plt.xlim(0, len(vis[nu, 0]))
         else:
-            angle_err += np.mean(abs(np.angle(vis[nu, misc.feed_map(ant, i+1, 128)]))) / 127.0
-            plt.plot((np.angle(vis[nu, misc.feed_map(ant, i+1, 128)])))
+            angle_err += np.mean(abs(np.angle(vis[nu, misc.feed_map(ant, antj+1, 128)]))) / 127.0
+            plt.plot((np.angle(vis[nu, misc.feed_map(ant, antj+1, 128)])))
             plt.axis('off')
             plt.axhline(0.0, color='black')
 
-            oo = np.round(np.std(np.angle(vis[nu, misc.feed_map(ant, i+1, 128)]) * 180 / np.pi))
-            plt.title(np.str(oo) + ',' + np.str(i))
+            oo = np.round(np.std(np.angle(vis[nu, misc.feed_map(ant, antj+1, 128)]) * 180 / np.pi))
+            plt.title(np.str(oo) + ',' + np.str(antj))
 
             if i in bad_chans:
-                plt.plot(np.angle(vis[nu, misc.feed_map(ant, i+1, 128)]), color='red')
+                plt.plot(np.angle(vis[nu, misc.feed_map(ant, antj+1, 128)]), color='red')
             plt.ylim(-np.pi, np.pi)
 
     plt.title(np.str(180 / np.pi * angle_err))
@@ -174,7 +173,7 @@ def solve_ps_transit(filename, corrs, feeds, inp,
     """
 
     nsplit = 32 # Number of freq chunks to divide nfreq into
-    del_t = 400
+    del_t = 800
 
     f = h5py.File(filename, 'r')
 
@@ -285,7 +284,7 @@ def solve_ps_transit(filename, corrs, feeds, inp,
         print "Nans %d %d" % (np.isnan(Gains).sum(), np.isnan(Gains[frq]).sum())
 
         # Plot up post-fs phases to see if everything has been fixed
-        if frq[0] == 22 * nsplit:
+        if frq[0] == 9 * nsplit:
             print "======================"
             print "   Plotting up freq: %d" % frq[0]
             print "======================"

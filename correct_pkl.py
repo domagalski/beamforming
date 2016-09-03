@@ -93,26 +93,20 @@ def write_pkl(fnout, data):
 def phase_mult_remove_original_phase(data_pkl, phase, inp):
      phase[np.isnan(phase)] = 0.0
 
-     # Force the pkl carrier to be purely Real                                                                                                                        
-     data_pkl[inp][1][0] *= np.exp(-1j * np.angle(data_pkl[inp][1][0]))
 
-     # Now remove instrumental phase from carrier pkl                                                                                                                 
-     data_pkl[inp][1][0] *= np.exp(+1j * phase)
-
-
-     phase[np.isnan(phase)] = 0.0
-
-     # Force the pkl carrier to be purely Real
+     # Force the carrier pkl to be purely real
      data_pkl[inp][1][0] *= np.exp(-1j * np.angle(data_pkl[inp][1][0]))
 
      # Now remove instrumental phase from carrier pkl 
      data_pkl[inp][1][0] *= np.exp(+1j * phase)
+
      data_pkl[inp][1][0] = np.round(data_pkl[inp][1][0].real)\
          + 1j * np.round(data_pkl[inp][1][0].imag)
 
      # Gains cannot be larger than 2**15 - 1
      assert abs(data_pkl[inp][1][0].real).all() < 32767
      assert abs(data_pkl[inp][1][0].imag).all() < 32767
+     print data_pkl[inp][1][0].real, data_pkl[inp][1][0].imag
 
      return list(data_pkl[inp][1][0])
 
