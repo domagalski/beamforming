@@ -359,7 +359,7 @@ def compare_pkl_to_h5(fn, input_pkls, trans=False):
      for ii in range(256):
           print np.degrees(np.angle(Gain_pkl[305, ii])) + np.degrees(np.angle(Gains[305, ii]))
      
-     return data_pkl
+     return Gain_pkl
 
 ch_map = [12, 13, 14, 15, 8, 9, 10, 11, 4, 5, 6, 7, 0, 1, 2, 3]
 #fn = '/mnt/gamelan/untransposed/20150903T172424Z_pathfinder_corr/00000002_0000.h5'  

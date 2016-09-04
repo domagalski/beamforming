@@ -120,7 +120,7 @@ def solve_gain(data, feeds=None):
     dr[dr != dr] = 0.0
 
     print "Dynamic range max: %f" % dr.max()
-    print dr[0]
+    print dr[:]
 
     return dr, gain
 
@@ -210,7 +210,7 @@ def solve_ps_transit(filename, corrs, feeds, inp,
     
     # Start at a strong freq channel that can be plotted
     # and from which we can find the noise source on-sample
-    for i in range(9, nsplit) + range(0, 9):
+    for i in range(12, nsplit) + range(0, 12):
 
         k+=1
 
@@ -241,6 +241,8 @@ def solve_ps_transit(filename, corrs, feeds, inp,
             
             del gg
             
+
+
         # Read in time and freq slice if data has not yet been transposed
         if transposed is False:
             print "TRANSPOSED V OF CODE DOESN'T WORK YET!"
@@ -275,16 +277,30 @@ def solve_ps_transit(filename, corrs, feeds, inp,
 
         del vis
 
-        dr, a = solve_gain(data_fs)
+        dr, sol_arr = solve_gain(data_fs)
 
-        trans_pix = np.argmax(np.bincount(np.argmax(dr, axis=-1)))
+        # Find index of point source transit
+        drlist = np.argmax(dr, axis=-1)
+        
+        # If multiple freq channels are zerod, the trans_pix
+        # will end up being 0. This is bad, so ensure that 
+        # you are only looking for non-zero transit pixels.
+        drlist = [x for x in drlist if x != 0]
+        trans_pix = np.argmax(np.bincount(drlist))
 
-        Gains[frq] = a[..., trans_pix-3:trans_pix+4].mean(-1)
+        assert trans_pix != 0.0
 
-        print "Nans %d %d" % (np.isnan(Gains).sum(), np.isnan(Gains[frq]).sum())
+        Gains[frq] = sol_arr[..., trans_pix-3:trans_pix+4].mean(-1)
+
+        zz = h5py.File('data' + str(i) + '.hdf5','w')
+        zz.create_dataset('data', data=dr)
+        zz.close()
+
+        print "%f, %d Nans out of %d" % (np.isnan(sol_arr).sum(), np.isnan(Gains[frq]).sum(), np.isnan(Gains[frq]).sum())
+        print trans_pix, sol_arr[..., trans_pix-3:trans_pix+4].mean(-1).sum(), sol_arr.mean(-1).sum()
 
         # Plot up post-fs phases to see if everything has been fixed
-        if frq[0] == 9 * nsplit:
+        if frq[0] == 12 * nsplit:
             print "======================"
             print "   Plotting up freq: %d" % frq[0]
             print "======================"
